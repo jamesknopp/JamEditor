@@ -1,0 +1,23 @@
+﻿<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+    <PropertyGroup>
+        <SanitizedProjectName>Advanced</SanitizedProjectName>
+        <DCC_ImageBase>00400000</DCC_ImageBase>
+        <DCC_IntegerOverflowCheck>true</DCC_IntegerOverflowCheck>
+        <DCC_MinStackSize>4096</DCC_MinStackSize>
+        <DCC_Namespace>Vcl;Vcl.Imaging;Vcl.Touch;Vcl.Samples;Vcl.Shell;System;Xml;Data;Datasnap;Web;Soap;Winapi;$(DCC_Namespace)</DCC_Namespace>
+        <DCC_Optimize>false</DCC_Optimize>
+        <DCC_RangeChecking>true</DCC_RangeChecking>
+        <DCC_UnitSearchPath>..\..\Source;..\..\Common;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
+        <DCC_UsePackage>C:\windows\microsoft.net\framework\v1.1.4322\system.dll;C:\windows\microsoft.net\framework\v1.1.4322\system.data.dll;C:\windows\microsoft.net\framework\v1.1.4322\system.drawing.dll;C:\windows\microsoft.net\framework\v1.1.4322\system.windows.forms.dll;C:\windows\microsoft.net\framework\v1.1.4322\system.xml.dll;vcl;rtl;$(DCC_UsePackage)</DCC_UsePackage>
+        <VerInfo_Keys>FileVersion=1.0.0.0</VerInfo_Keys>
+        <VerInfo_Locale>1031</VerInfo_Locale>
+    </PropertyGroup>
+    <ProjectExtensions>
+        <Borland.Personality>Delphi.Personality.12</Borland.Personality>
+        <Borland.ProjectType>OptionSet</Borland.ProjectType>
+        <BorlandProject>
+            <Delphi.Personality/>
+        </BorlandProject>
+        <ProjectFileVersion>12</ProjectFileVersion>
+    </ProjectExtensions>
+</Project>

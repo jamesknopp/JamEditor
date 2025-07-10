@@ -1,0 +1,880 @@
+﻿unit MainForm;
+
+interface
+
+uses
+  Winapi.Windows, Winapi.Messages,
+  System.SysUtils, System.Variants, System.Classes,
+
+  Vcl.Graphics, Vcl.Controls, Vcl.Forms,
+  Vcl.Dialogs, Vcl.ComCtrls, Vcl.ExtCtrls,
+  Vcl.StdCtrls, Vcl.NumberBox, Vcl.ExtDlgs,
+  Vcl.CustomizeDlg, Vcl.Menus,
+  Vcl.ImgList, Vcl.BaseImageCollection, Vcl.ImageCollection,
+  Vcl.VirtualImageList,
+
+  JamBrowser, JamGeneral, JamSW, JamHW, JamPalette, System.ImageList,
+  Vcl.ToolWin, Vcl.Tabs, Vcl.Samples.Spin, Vcl.Mask, Vcl.Grids, Vcl.ValEdit;
+
+type
+
+  TJamTreeNode = class
+    data: integer;
+    jamID : integer;
+    editNode: boolean;
+    nodeType: string;
+  end;
+
+  PJamTreeNode = ^TJamTreeNode;
+
+  TFormMain = class(TForm)
+    TreeViewJams: TTreeView;
+    dlgOpenJam: TOpenDialog;
+    ScrollBox1: TScrollBox;
+    ImageCanvas: TImage;
+    dlgSaveJam: TSaveDialog;
+    canvasPopupMenu: TPopupMenu;
+    popupImportTexture: TMenuItem;
+    popupExportTexture: TMenuItem;
+    importDialog: TOpenPictureDialog;
+    exportDialog: TSaveDialog;
+    MainMenu1: TMainMenu;
+    File1: TMenuItem;
+    Edit1: TMenuItem;
+    Image1: TMenuItem;
+    New1: TMenuItem;
+    Open1: TMenuItem;
+    Close1: TMenuItem;
+    N1: TMenuItem;
+    Save1: TMenuItem;
+    SaveAs1: TMenuItem;
+    N2: TMenuItem;
+    N3: TMenuItem;
+    Exit1: TMenuItem;
+    N4: TMenuItem;
+    Browser1: TMenuItem;
+    AddNewTexture1: TMenuItem;
+    N5: TMenuItem;
+    ImportCanvas1: TMenuItem;
+    ExportCanvas1: TMenuItem;
+    Paste1: TMenuItem;
+    N6: TMenuItem;
+    ModifyPalettes1: TMenuItem;
+    N7: TMenuItem;
+    Properties1: TMenuItem;
+    ImportTexture1: TMenuItem;
+    ImportAnimation1: TMenuItem;
+    N8: TMenuItem;
+    ExportTexture1: TMenuItem;
+    ExportCanvas2: TMenuItem;
+    Help1: TMenuItem;
+    About1: TMenuItem;
+    ToolBar1: TToolBar;
+    ToolButton1: TToolButton;
+    ToolButton2: TToolButton;
+    ToolButton3: TToolButton;
+    ToolButton4: TToolButton;
+    ToolButton5: TToolButton;
+    ToolButton6: TToolButton;
+    ToolButton7: TToolButton;
+    ToolButton8: TToolButton;
+    ToolButton9: TToolButton;
+    ToolButton10: TToolButton;
+    toolBtn_GP2PAL: TToolButton;
+    Splitter1: TSplitter;
+    StatusBar1: TStatusBar;
+    Panel1: TPanel;
+    toolBtn_GP3PAL: TToolButton;
+    ToolButton11: TToolButton;
+    toolBtn_PalPrev: TToolButton;
+    toolBtn_Pal1: TToolButton;
+    toolBtn_Pal2: TToolButton;
+    toolBtn_Pal3: TToolButton;
+    toolBtn_Pal4: TToolButton;
+    toolBtn_PalNext: TToolButton;
+    VirtualImageList1: TVirtualImageList;
+    ImageCollection1: TImageCollection;
+    ImageEntry: TImage;
+    PaintBoxPalette: TPaintBox;
+    btnPal0: TButton;
+    btnPal1: TButton;
+    btnPal2: TButton;
+    btnPal3: TButton;
+    Bevel1: TBevel;
+    Label2: TLabel;
+    comboSimpMethod: TComboBox;
+    Label1: TLabel;
+    numBox_SimpThresh: TNumberBox;
+    numBox_BlurAmount: TNumberBox;
+    chkBoxSimpPal: TCheckBox;
+    chkBoxTrans: TCheckBox;
+    btnGenPal: TButton;
+    btnRemovePal: TButton;
+    btnDrawData: TButton;
+    Label3: TLabel;
+    SpinEdit1: TSpinEdit;
+    panel_textureProperties: TPanel;
+    Label4: TLabel;
+    tex_X: TSpinEdit;
+    tex_Y: TSpinEdit;
+    tex_width: TSpinEdit;
+    tex_height: TSpinEdit;
+    tex_ID: TSpinEdit;
+    Label5: TLabel;
+    procedure TreeViewJamsChange(Sender: TObject; Node: TTreeNode);
+    procedure PaintBoxPalettePaint(Sender: TObject);
+    procedure btnLoadJamClick(Sender: TObject);
+    procedure btnGP2palClick(Sender: TObject);
+    procedure btnGP3palClick(Sender: TObject);
+    procedure btnPal0Click(Sender: TObject);
+    procedure btnPal1Click(Sender: TObject);
+    procedure btnPal2Click(Sender: TObject);
+    procedure btnPal3Click(Sender: TObject);
+    procedure FormCreate(Sender: TObject);
+    procedure btnDrawDataClick(Sender: TObject);
+    procedure ImageCanvasMouseDown(Sender: TObject; Button: TMouseButton;
+      Shift: TShiftState; X, Y: Integer);
+    procedure ImageCanvasMouseMove(Sender: TObject; Shift: TShiftState;
+      X, Y: Integer);
+    procedure ImageCanvasMouseUp(Sender: TObject; Button: TMouseButton;
+      Shift: TShiftState; X, Y: Integer);
+    procedure btnSaveJamClick(Sender: TObject);
+    procedure popupImportTextureClick(Sender: TObject);
+    procedure btnExportTextureClick(Sender: TObject);
+    procedure toolBtn_PalPrevClick(Sender: TObject);
+    procedure toolBtn_PalNextClick(Sender: TObject);
+    procedure comboSimpMethodChange(Sender: TObject);
+    procedure numBox_SimpThreshChange(Sender: TObject);
+    procedure numBox_BlurAmountChange(Sender: TObject);
+    procedure chkBoxSimpPalClick(Sender: TObject);
+    procedure chkBoxTransClick(Sender: TObject);
+    procedure btnGenPalClick(Sender: TObject);
+    procedure btnRemovePalClick(Sender: TObject);
+    procedure Browser1Click(Sender: TObject);
+    procedure Splitter2Paint(Sender: TObject);
+
+  private
+    FJamFile: TJamFile;
+    FHWJamFile: THWJamFile;
+    procedure RefreshCanvas;
+    procedure RefreshPalette();
+    procedure DrawTexture();
+    procedure PalChange(palID: Integer);
+    procedure PaletteReGen;
+    procedure TreeReDraw;
+
+  private
+
+  public
+
+  end;
+
+var
+  FormMain: TFormMain;
+
+implementation
+
+{$R *.dfm}
+
+procedure SaveExpandedNodes(Tree: TTreeView; ExpandedPaths: TStrings;
+  out SelectedPath: string);
+var
+  Node: TTreeNode;
+  function GetNodePath(Node: TTreeNode): string;
+  begin
+    Result := '';
+    while Node <> nil do
+    begin
+      Result := Node.Text + '/' + Result;
+      Node := Node.Parent;
+    end;
+    Result := '/' + Result;
+  end;
+
+begin
+  ExpandedPaths.Clear;
+  Node := Tree.Items.GetFirstNode;
+  while Node <> nil do
+  begin
+    if Node.Expanded then
+      ExpandedPaths.Add(GetNodePath(Node));
+    Node := Node.GetNext;
+  end;
+
+  if Assigned(Tree.Selected) then
+    SelectedPath := GetNodePath(Tree.Selected)
+  else
+    SelectedPath := '';
+end;
+
+procedure RestoreExpandedNodes(Tree: TTreeView; ExpandedPaths: TStrings;
+  const SelectedPath: string);
+var
+  Node: TTreeNode;
+
+  function FindNodeByPath(Path: string): TTreeNode;
+  var
+    Parts: TArray<string>;
+    I: Integer;
+    Current: TTreeNode;
+  begin
+    Result := nil;
+    if Path = '' then
+      Exit;
+
+    Parts := Path.Split(['/'], TStringSplitOptions.ExcludeEmpty);
+    Current := nil;
+
+    for I := 0 to High(Parts) do
+    begin
+      Result := nil;
+      if Current = nil then
+        Current := Tree.Items.GetFirstNode
+      else
+        Current := Current.getFirstChild;
+
+      while Current <> nil do
+      begin
+        if SameText(Current.Text, Parts[I]) then
+        begin
+          Result := Current;
+          Break;
+        end;
+        Current := Current.getNextSibling;
+      end;
+
+      if Result = nil then
+        Exit;
+      Current := Result;
+    end;
+
+    Result := Current;
+  end;
+
+var
+  I: Integer;
+  NodePath: string;
+begin
+  for I := 0 to ExpandedPaths.Count - 1 do
+  begin
+    NodePath := ExpandedPaths[I];
+    Node := FindNodeByPath(NodePath);
+    if Assigned(Node) then
+      Node.Expand(False);
+  end;
+
+  Node := FindNodeByPath(SelectedPath);
+  if Assigned(Node) then
+    Tree.Selected := Node;
+end;
+
+procedure TFormMain.TreeReDraw();
+var
+  Expanded: TStringList;
+  SelectedPath: string;
+begin
+  Expanded := TStringList.Create;
+  try
+    SaveExpandedNodes(TreeViewJams, Expanded, SelectedPath);
+    FJamFile.PopulateTree(TreeViewJams);
+    RestoreExpandedNodes(TreeViewJams, Expanded, SelectedPath);
+  finally
+    Expanded.Free;
+  end;
+end;
+
+procedure TFormMain.PaletteReGen;
+var
+  tmpCanvas: TBitmap;
+begin
+
+  if boolJamLoaded = true then
+  begin
+
+    intSimplifyThreshold := round(numBox_SimpThresh.Value);
+    intSimplifyMethod := comboSimpMethod.ItemIndex;
+    intBlurThreshold := round(numBox_BlurAmount.Value);
+    boolSimpifyAllPals := chkBoxSimpPal.Checked;
+    boolProtectTrans := chkBoxTrans.Checked;
+
+    tmpCanvas := FJamFile.FEntries[intSelectedTexture].FOriginalTex;
+
+    FJamFile.FEntries[intSelectedTexture].FTexture :=
+      FJamFile.GenerateGPxBMP(tmpCanvas, intSelectedTexture);
+    // Rebuild and store texture
+
+    RefreshPalette;
+    RefreshCanvas;
+    DrawTexture;
+
+  end;
+
+end;
+
+
+procedure TFormMain.DrawTexture();
+begin
+  if boolJamLoaded = true then
+  begin
+
+    if boolRcrJam then
+      Exit;
+    ImageEntry.Picture.Bitmap := FJamFile.DrawPalTexture(intSelectedTexture);
+  end;
+end;
+
+procedure TFormMain.PalChange(palID: Integer);
+var
+  X: Integer;
+  btnArray: array [0 .. 3] of TToolButton;
+begin
+
+  if boolJamLoaded = true then
+  begin
+
+    btnArray[0] := toolBtn_Pal1;
+    btnArray[1] := toolBtn_Pal2;
+    btnArray[2] := toolBtn_Pal3;
+    btnArray[3] := toolBtn_Pal4;
+
+    intPaletteID := palID;
+
+    for X := 0 to 3 do
+      if X = intPaletteID then
+        btnArray[X].down := true;
+
+    RefreshPalette();
+    RefreshCanvas;
+    if intSelectedTexture > -1 then
+      DrawTexture
+  end;
+end;
+
+procedure TFormMain.Browser1Click(Sender: TObject);
+begin
+  JamBrowser.JamBrowserFrm.Show;
+end;
+
+procedure TFormMain.btnDrawDataClick(Sender: TObject);
+begin
+  if boolJamLoaded = true then
+  begin
+
+    boolDrawOutlines := not boolDrawOutlines;
+    RefreshCanvas;
+  end;
+end;
+
+procedure TFormMain.btnExportTextureClick(Sender: TObject);
+begin
+  if boolJamLoaded = true then
+  begin
+
+    if exportDialog.Execute then
+      ImageEntry.Picture.SaveToFile(exportDialog.FileName);
+
+  end;
+end;
+
+procedure TFormMain.btnGP2palClick(Sender: TObject);
+var
+  I: Integer;
+begin
+  for I := 0 to 255 do
+    GPXPal[I] := Gp2Pal[I];
+
+  if boolJamLoaded = true then
+  begin
+
+    RefreshPalette;
+    RefreshCanvas;
+  end;
+
+end;
+
+procedure TFormMain.btnGP3palClick(Sender: TObject);
+var
+  I: Integer;
+begin
+  for I := 0 to 255 do
+    GPXPal[I] := Gp3Pal[I];
+
+  if boolJamLoaded = true then
+  begin
+
+    RefreshPalette;
+    RefreshCanvas;
+
+  end;
+end;
+
+procedure TFormMain.btnLoadJamClick(Sender: TObject);
+begin
+  if dlgOpenJam.Execute then
+  begin
+    if boolJamLoaded = true then
+    begin
+      // FJamFile.Free;
+      // FJamFile.Destroy;
+      // boolJamLoaded := false;
+    end;
+
+    if isHWJAM(dlgOpenJam.FileName) then
+    begin
+      boolHWJAM := true;
+
+      FHWJamFile := THWJamFile.Create;
+      FHWJamFile.LoadFromFile(dlgOpenJam.FileName);
+      FHWJamFile.PopulateTree(TreeViewJams);
+      RefreshCanvas;
+
+    end
+    else
+    begin
+      boolHWJAM := False;
+
+      FJamFile := TJamFile.Create;
+      FJamFile.LoadFromFile(dlgOpenJam.FileName);
+      FJamFile.PopulateTree(TreeViewJams);
+
+      RefreshCanvas;
+      RefreshPalette;
+
+    end;
+
+  end;
+end;
+
+procedure TFormMain.btnPal0Click(Sender: TObject);
+begin
+  PalChange(0);
+end;
+
+procedure TFormMain.btnPal1Click(Sender: TObject);
+begin
+  PalChange(1);
+end;
+
+procedure TFormMain.btnPal2Click(Sender: TObject);
+begin
+  PalChange(2);
+end;
+
+procedure TFormMain.btnPal3Click(Sender: TObject);
+begin
+  PalChange(3);
+end;
+
+procedure TFormMain.btnSaveJamClick(Sender: TObject);
+begin
+  if dlgSaveJam.Execute then
+  begin
+    FJamFile.SaveToFile(dlgSaveJam.FileName)
+  end;
+end;
+
+procedure TFormMain.btnGenPalClick(Sender: TObject);
+
+begin
+  PaletteReGen;
+  TreeReDraw;
+end;
+
+procedure TFormMain.btnRemovePalClick(Sender: TObject);
+begin
+  FJamFile.ZeroPalette(intSelectedTexture);
+  PalChange(0);
+  TreeReDraw;
+end;
+
+procedure TFormMain.chkBoxSimpPalClick(Sender: TObject);
+begin
+  // PaletteReGen;
+end;
+
+procedure TFormMain.chkBoxTransClick(Sender: TObject);
+begin
+  // PaletteReGen;
+end;
+
+procedure TFormMain.comboSimpMethodChange(Sender: TObject);
+begin
+  // PaletteReGen;
+end;
+
+procedure TFormMain.FormCreate(Sender: TObject);
+var
+  I: Integer;
+begin
+  for I := 0 to 255 do
+    GPXPal[I] := Gp3Pal[I];
+
+  intPaletteID := 0;
+
+  intJamZoom := 1;
+
+  intSimplifyThreshold := 1;
+  intSimplifyMethod := 3;
+  intBlurThreshold := 2;
+  intSimplifyDist := 1;
+  boolSimpifyAllPals := False;
+  boolProtectTrans := False;
+
+  boolJamLoaded := False;
+
+  boolHWJAM := False;
+
+  comboSimpMethod.ItemIndex := intSimplifyMethod;
+
+  numBox_SimpThresh.Value := round(intSimplifyThreshold);
+  numBox_BlurAmount.Value := intBlurThreshold;
+  chkBoxSimpPal.Checked := boolSimpifyAllPals;
+  chkBoxTrans.Checked := boolProtectTrans;
+
+end;
+
+
+procedure TFormMain.ImageCanvasMouseDown(Sender: TObject; Button: TMouseButton;
+  Shift: TShiftState; X, Y: Integer);
+var
+
+  R: TRect;
+  Pt: TPoint;
+  Half, Sz: Integer;
+  I, tempSelectedTex: Integer;
+  RootNode, EntryNode, N: TTreeNode;
+
+begin
+
+ if booljamLoaded = false then exit;
+
+  if boolHWJAM = true then
+   begin
+   tempSelectedTex := intSelectedTexture;
+     // 1) Hit‐test click against all entries
+    // Toggle off if same entry clicked twice
+    for I := 0 to FHWJamFile.Entries.Count - 1 do
+    begin
+      with FHWJamFile.Entries[I] do
+        if (X >= Info.X) and (X < Info.X + Info.Width) and (Y >= Info.Y) and
+          (Y < Info.Y + Info.Height) then
+        begin
+          intSelectedTexture := I;
+        end
+    end;
+
+  end
+  else
+  begin
+    tempSelectedTex := intSelectedTexture;
+    // 1) Hit‐test click against all entries
+    // Toggle off if same entry clicked twice
+    for I := 0 to FJamFile.Entries.Count - 1 do
+    begin
+      with FJamFile.Entries[I] do
+        if (X >= Info.X) and (X < Info.X + Info.Width) and (Y >= Info.Y) and
+          (Y < Info.Y + Info.Height) then
+        begin
+          intSelectedTexture := I;
+        end
+    end;
+
+  end;
+
+  if intSelectedTexture = tempSelectedTex then
+    Exit;
+
+  // if (intSelectedTexture < 0) or not Assigned(FJamFile) then Exit;
+  //
+  // Pt := Point(X, Y);
+  // E := FJamFile.Entries[intSelectedTexture];
+  // R := Rect(E.Info.X, E.Info.Y,
+  // E.Info.X + E.Info.Width,
+  // E.Info.Y + E.Info.Height);
+  //
+  // // Check corners first
+  // FDragMode := dmNone;
+  // Sz := 6; Half := Sz div 2;
+  // if PtInRect(Rect(R.Left - Half, R.Top - Half,
+  // R.Left + Half, R.Top + Half), Pt) then
+  // FDragMode := dmResizeTL
+  // else if PtInRect(Rect(R.Right - Half, R.Top - Half,
+  // R.Right + Half, R.Top + Half), Pt) then
+  // FDragMode := dmResizeTR
+  // else if PtInRect(Rect(R.Left - Half, R.Bottom - Half,
+  // R.Left + Half, R.Bottom + Half), Pt) then
+  // FDragMode := dmResizeBL
+  // else if PtInRect(Rect(R.Right - Half, R.Bottom - Half,
+  // R.Right + Half, R.Bottom + Half), Pt) then
+  // FDragMode := dmResizeBR
+  // else if PtInRect(R, Pt) then
+  // FDragMode := dmMove;   // inside the rectangle → move
+  //
+  // if FDragMode <> dmNone then
+  // begin
+  // FStartPt := Pt;
+  // FOrigRect := R;
+  // // capture the mouse so we keep getting OnMouseMove/Up
+  /// /    ImageCanvas.SetFocus;
+  // ImageCanvas.Canvas.Brush.Style := bsClear;
+  // end;
+
+  // 2) Collapse all child nodes under root
+  RootNode := TreeViewJams.Items[0]; // assume this is your "JAM Items" root
+  N := RootNode.getFirstChild;
+  while Assigned(N) do
+  begin
+    N.Collapse(False);
+    N := N.getNextSibling;
+  end;
+
+  // 3) If a texture is selected, find its node, select & expand it
+  TreeViewJams.Items.BeginUpdate;
+  try
+    TreeViewJams.Selected := nil;
+    if intSelectedTexture >= 0 then
+    begin
+      // walk to the Nth child
+      EntryNode := RootNode.getFirstChild;
+      for I := 1 to intSelectedTexture do
+        EntryNode := EntryNode.getNextSibling;
+
+      TreeViewJams.Selected := EntryNode;
+      EntryNode.Expand(False);
+      EntryNode.MakeVisible;
+    end;
+  finally
+    TreeViewJams.Items.EndUpdate;
+  end;
+
+  // 4) Redraw your image (DrawOutlines should pick up intSelectedTexture)
+  PaintBoxPalette.Repaint;
+  // pick default JAM transparent colour
+  DrawTexture;
+
+  RefreshCanvas;
+
+end;
+
+procedure TFormMain.TreeViewJamsChange(Sender: TObject; Node: TTreeNode);
+var
+  EntryNode: TTreeNode;
+begin
+  // Start from whatever node was clicked
+  EntryNode := Node;
+  // Climb up until we hit the direct child of the root (level = 1)
+  while Assigned(EntryNode) and (EntryNode.Level > 1) do
+    EntryNode := EntryNode.Parent;
+
+  // If we’ve landed on a level‐1 node, its Index = texture ID
+  if Assigned(EntryNode) and (EntryNode.Level = 1) then
+  begin
+    intSelectedTexture := EntryNode.Index;
+    if boolHWJAM = False then
+      RefreshPalette;
+    RefreshCanvas;
+    DrawTexture;
+  end
+
+end;
+
+procedure TFormMain.RefreshCanvas;
+var
+  bmp: TBitmap;
+begin
+
+  if boolHWJAM = False then
+    bmp := FJamFile.DrawOutlines(FJamFile.DrawCanvas);
+
+  if boolHWJAM = true then
+    bmp := FHWJamFile.DrawOutlines(FHWJamFile.DrawCanvas);
+  // bmp := FHWJamFile.DrawCanvas;
+
+  ImageCanvas.Height := intJamMaxHeight;
+  ImageCanvas.Width := intjamMaxWidth;
+  ImageCanvas.Refresh;
+  ImageCanvas.Repaint;
+  try
+    ImageCanvas.Picture.Bitmap := bmp;
+  finally
+    bmp.Free;
+  end;
+end;
+
+procedure TFormMain.RefreshPalette();
+begin
+  PaintBoxPalette.Repaint;
+end;
+
+procedure TFormMain.Splitter2Paint(Sender: TObject);
+var
+width : integer;
+height : integer;
+ratio: double;
+begin
+
+if booljamLoaded = false then exit;
+
+ratio := imageentry.Picture.Graphic.height /  imageentry.Picture.Graphic.width;
+
+imageentry.height := round(imageentry.width * ratio);
+
+if imageentry.height > 256 then
+   imageentry.height := 256;
+
+
+end;
+
+procedure TFormMain.toolBtn_PalNextClick(Sender: TObject);
+var
+  X: Integer;
+begin
+
+  X := intPaletteID;
+
+  if intPaletteID = 3 then
+  begin
+    PalChange(0);
+  end
+  else
+  begin
+    PalChange(intPaletteID + 1);
+  end;
+end;
+
+procedure TFormMain.toolBtn_PalPrevClick(Sender: TObject);
+var
+  X: Integer;
+begin
+
+  if intPaletteID = 0 then
+  begin
+    PalChange(3);
+  end
+  else
+  begin
+    PalChange(intPaletteID - 1);
+  end;
+
+end;
+
+procedure TFormMain.PaintBoxPalettePaint(Sender: TObject);
+var
+  Count, I: Integer;
+  PalBytes: TBytes;
+  CellWidth: Integer;
+  C: TColor;
+begin
+  if not Assigned(FJamFile) or not Assigned(TreeViewJams.Selected) then
+    Exit;
+
+  if intSelectedTexture > -1 then
+  begin
+
+    Count := FJamFile.Entries[intSelectedTexture].Info.PaletteSizeDiv4;
+    if Count = 0 then
+      Exit;
+    PalBytes := FJamFile.Entries[intSelectedTexture].Palettes[intPaletteID];
+    CellWidth := PaintBoxPalette.Width div Count;
+    for I := 0 to Count - 1 do
+    begin
+      C := RGBFromTRGB(GPXPal[PalBytes[I]]);
+      localGpxPal[I] := GPXPal[PalBytes[I]];
+      PaintBoxPalette.Canvas.Brush.Color := C;
+      PaintBoxPalette.Canvas.FillRect(rect(I * CellWidth, 0,
+        (I + 1) * CellWidth, PaintBoxPalette.Height));
+    end;
+  end;
+end;
+
+procedure TFormMain.popupImportTextureClick(Sender: TObject);
+begin
+  if importDialog.Execute then
+  begin
+    FJamFile.ImportTexture(intSelectedTexture, importDialog.FileName);
+    ImageCanvas.Refresh;
+    ImageCanvas.Repaint;
+  end;
+
+  RefreshCanvas;
+  RefreshPalette;
+  DrawTexture;
+
+end;
+
+procedure TFormMain.ImageCanvasMouseMove(Sender: TObject; Shift: TShiftState;
+  X, Y: Integer);
+// var
+// DX, DY: Integer;
+// NewRect: TRect;
+// EInfo: TJamEntryInfo;
+begin
+  // inherited;
+  // if FDragMode = dmNone then Exit;
+  //
+  // DX := X - FStartPt.X;
+  // DY := Y - FStartPt.Y;
+  // NewRect := FOrigRect;
+  //
+  // case FDragMode of
+  // dmMove:
+  // OffsetRect(NewRect, DX, DY);
+  //
+  // dmResizeTL:
+  // begin
+  // NewRect.Left := FOrigRect.Left + DX;
+  // NewRect.Top  := FOrigRect.Top  + DY;
+  // end;
+  // dmResizeTR:
+  // begin
+  // NewRect.Right := FOrigRect.Right + DX;
+  // NewRect.Top   := FOrigRect.Top   + DY;
+  // end;
+  // dmResizeBL:
+  // begin
+  // NewRect.Left   := FOrigRect.Left + DX;
+  // NewRect.Bottom := FOrigRect.Bottom + DY;
+  // end;
+  // dmResizeBR:
+  // begin
+  // NewRect.Right  := FOrigRect.Right  + DX;
+  // NewRect.Bottom := FOrigRect.Bottom + DY;
+  // end;
+  // end;
+  //
+  // // constrain minimum size, if you like
+  // if NewRect.Width < 1 then NewRect.Right := NewRect.Left + 1;
+  // if NewRect.Height < 1 then NewRect.Bottom := NewRect.Top + 1;
+  //
+  // // write back into the entry
+  // EInfo := FJamFile.Entries[intSelectedTexture].Info;
+  //
+  // EInfo.X      := NewRect.Left;
+  // EInfo.Y      := NewRect.Top;
+  // EInfo.Width  := NewRect.Width;
+  // EInfo.Height := NewRect.Height;
+  //
+  // FJamFile.Entries[intSelectedTexture].Info :=  EInfo;
+
+  // redraw immediately
+  // refreshCanvas;
+end;
+
+procedure TFormMain.ImageCanvasMouseUp(Sender: TObject; Button: TMouseButton;
+  Shift: TShiftState; X, Y: Integer);
+begin
+  // inherited;
+  // FDragMode := dmNone;
+end;
+
+procedure TFormMain.numBox_BlurAmountChange(Sender: TObject);
+begin
+  // PaletteReGen;
+end;
+
+procedure TFormMain.numBox_SimpThreshChange(Sender: TObject);
+begin
+  // PaletteReGen;
+end;
+
+end.

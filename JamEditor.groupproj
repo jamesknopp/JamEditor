@@ -1,0 +1,36 @@
+﻿<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+    <PropertyGroup>
+        <ProjectGuid>{51FBCE6E-BCC1-4E90-ADF4-639037ED7ED9}</ProjectGuid>
+    </PropertyGroup>
+    <ItemGroup>
+        <Projects Include="jamviewer.dproj">
+            <Dependencies/>
+        </Projects>
+    </ItemGroup>
+    <ProjectExtensions>
+        <Borland.Personality>Default.Personality.12</Borland.Personality>
+        <Borland.ProjectType/>
+        <BorlandProject>
+            <Default.Personality/>
+        </BorlandProject>
+    </ProjectExtensions>
+    <Target Name="jamviewer">
+        <MSBuild Projects="jamviewer.dproj"/>
+    </Target>
+    <Target Name="jamviewer:Clean">
+        <MSBuild Projects="jamviewer.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="jamviewer:Make">
+        <MSBuild Projects="jamviewer.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="Build">
+        <CallTarget Targets="jamviewer"/>
+    </Target>
+    <Target Name="Clean">
+        <CallTarget Targets="jamviewer:Clean"/>
+    </Target>
+    <Target Name="Make">
+        <CallTarget Targets="jamviewer:Make"/>
+    </Target>
+    <Import Project="$(BDS)\Bin\CodeGear.Group.Targets" Condition="Exists('$(BDS)\Bin\CodeGear.Group.Targets')"/>
+</Project>
