@@ -86,6 +86,15 @@
         <VerInfo_IncludeVerInfo>true</VerInfo_IncludeVerInfo>
         <VerInfo_Locale>1033</VerInfo_Locale>
         <VerInfo_Keys>CompanyName=;FileDescription=$(MSBuildProjectName);FileVersion=1.0.0.0;InternalName=;LegalCopyright=;LegalTrademarks=;OriginalFilename=;ProductName=$(MSBuildProjectName);ProductVersion=1.0.0.0;Comments=;ProgramID=com.embarcadero.$(MSBuildProjectName)</VerInfo_Keys>
+        <DCC_MapFile>3</DCC_MapFile>
+        <DCC_ExeOutput>C:\Users\james\OneDrive\coding\++WORKINGCODE++\gp3Jam2000_v008\RELEASE\</DCC_ExeOutput>
+        <DCC_Optimize>true</DCC_Optimize>
+        <DCC_ImportedDataReferences>false</DCC_ImportedDataReferences>
+        <DCC_AssertionsAtRuntime>false</DCC_AssertionsAtRuntime>
+        <Debugger_LoadAllSymbols>false</Debugger_LoadAllSymbols>
+        <DCC_Define>madExcept;$(DCC_Define)</DCC_Define>
+        <DCC_DebugInformation>2</DCC_DebugInformation>
+        <DCC_LocalDebugSymbols>true</DCC_LocalDebugSymbols>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Cfg_2)'!=''">
         <DCC_Define>DEBUG;$(DCC_Define)</DCC_Define>
@@ -100,7 +109,6 @@
         <VerInfo_Locale>1033</VerInfo_Locale>
         <VerInfo_Keys>CompanyName=;FileDescription=$(MSBuildProjectName);FileVersion=1.0.0.0;InternalName=;LegalCopyright=;LegalTrademarks=;OriginalFilename=;ProductName=$(MSBuildProjectName);ProductVersion=1.0.0.0;Comments=;ProgramID=com.embarcadero.$(MSBuildProjectName)</VerInfo_Keys>
         <DCC_MapFile>3</DCC_MapFile>
-        <DCC_Define>madExcept;$(DCC_Define)</DCC_Define>
     </PropertyGroup>
     <ItemGroup>
         <DelphiCompile Include="$(MainSource)">
@@ -113,16 +121,32 @@
         <DCCReference Include="JamPalette.pas"/>
         <DCCReference Include="GeneralHelpers.pas"/>
         <DCCReference Include="JamBrowser.pas">
-            <Form>Form1</Form>
+            <Form>JamBrowserFrm</Form>
             <FormType>dfm</FormType>
         </DCCReference>
         <DCCReference Include="JamHW.pas"/>
         <DCCReference Include="JamSW.pas"/>
-        <DCCReference Include="GP2Mask.pas"/>
-        <RcItem Include="assets\gp2Livery.bmp">
-            <ResourceType>BITMAP</ResourceType>
-            <ResourceId>gp2Livery</ResourceId>
-        </RcItem>
+        <DCCReference Include="newJamDlg.pas">
+            <Form>newJamDialog</Form>
+            <FormType>dfm</FormType>
+        </DCCReference>
+        <DCCReference Include="JamPaletteDetector.pas"/>
+        <DCCReference Include="JamBatch.pas">
+            <Form>JamBatchForm</Form>
+            <FormType>dfm</FormType>
+        </DCCReference>
+        <DCCReference Include="Options.pas">
+            <Form>optionsForm</Form>
+            <FormType>dfm</FormType>
+        </DCCReference>
+        <DCCReference Include="JamScalingFlags.pas">
+            <Form>frmScalingFlags</Form>
+            <FormType>dfm</FormType>
+        </DCCReference>
+        <DCCReference Include="JamAnalysis.pas">
+            <Form>frmJamAnalysis</Form>
+            <FormType>dfm</FormType>
+        </DCCReference>
         <RcItem Include="assets\noPreview.png">
             <ResourceType>RCDATA</ResourceType>
             <ResourceId>noJamPreview</ResourceId>
@@ -157,13 +181,19 @@
                 <Platform value="Win64">False</Platform>
             </Platforms>
             <Deployment Version="4">
-                <DeployFile LocalName="assets\gp2Livery.bmp" Configuration="Debug" Class="ProjectFile">
+                <DeployFile LocalName="RELEASE\jamviewer.exe" Configuration="Release" Class="ProjectOutput">
+                    <Platform Name="Win32">
+                        <RemoteName>jamviewer.exe</RemoteName>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
+                <DeployFile LocalName="assets\noPreview.png" Configuration="Debug" Class="ProjectFile">
                     <Platform Name="Win32">
                         <RemoteDir>.\</RemoteDir>
                         <Overwrite>true</Overwrite>
                     </Platform>
                 </DeployFile>
-                <DeployFile LocalName="assets\noPreview.png" Configuration="Debug" Class="ProjectFile">
+                <DeployFile LocalName="assets\noPreview.png" Configuration="Release" Class="ProjectFile">
                     <Platform Name="Win32">
                         <RemoteDir>.\</RemoteDir>
                         <Overwrite>true</Overwrite>
@@ -1126,6 +1156,7 @@
                 <ProjectRoot Platform="Win64" Name="$(PROJECTNAME)"/>
                 <ProjectRoot Platform="Win64x" Name="$(PROJECTNAME)"/>
             </Deployment>
+            <ModelSupport>False</ModelSupport>
         </BorlandProject>
         <ProjectFileVersion>12</ProjectFileVersion>
     </ProjectExtensions>

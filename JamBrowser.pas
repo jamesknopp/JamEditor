@@ -1,18 +1,21 @@
-unit JamBrowser;
+﻿unit JamBrowser;
 
 interface
 
 uses
-  Winapi.Windows, Winapi.Messages, System.SysUtils, System.Variants,
+  Winapi.Windows, System.SysUtils,
   System.Classes, System.Threading, System.IOUtils, Vcl.Graphics, Vcl.Controls,
-  Vcl.Forms, Vcl.Dialogs, Vcl.Grids, Vcl.StdCtrls, Vcl.ExtCtrls,
-  Vcl.ComCtrls, Vcl.FileCtrl, System.StrUtils, ShellCtrls,
+  Vcl.Forms, Vcl.StdCtrls, Vcl.ExtCtrls,
+  Vcl.ComCtrls, System.StrUtils,
   VirtualTrees, VirtualTrees.DrawTree, VirtualTrees.Types,
-  VirtualTrees.BaseTree, EasyListview, GeneralHelpers, System.ImageList,
-  Vcl.ImgList, MPCommonObjects, MPCommonUtilities, VirtualTrees.BaseAncestorVCL,
-  VirtualTrees.AncestorVCL, Vcl.Imaging.pngimage,
+  VirtualTrees.BaseTree, EasyListview, GeneralHelpers,
+  MPCommonUtilities,
+  Vcl.Imaging.pngimage,
 
-  JamGeneral, JamHW, JamSW;
+  JamGeneral, JamHW, JamPalette, JamSW, System.ImageList, Vcl.ImgList,
+  MPCommonObjects,
+  VirtualTrees.BaseAncestorVCL, VirtualTrees.AncestorVCL, jamPaletteDetector,
+  Vcl.Menus, vcl.Dialogs;
 
 type
   // This data record contains all necessary information about a particular file system object.
@@ -35,13 +38,15 @@ type
     Orig: TBitmap;
     Height, Width, numTexs: Integer;
     jamType: string;
+    size: Integer;
+    dateCreated, dateModified: TDateTime;
     destructor Destroy; override;
   end;
 
   PJamBrowseNode = ^TJamBrowseNode;
 
 type
-  TJamBrowser = class(TForm)
+  TJamBrowserFrm = class(TForm)
     PanelTop: TPanel;
     SliderThumbSize: TTrackBar;
     PanelFolders: TPanel;
@@ -60,6 +65,23 @@ type
     lblDimensions: TLabel;
     lblTexs: TLabel;
     jamLoading: TLabel;
+    lblDateCreate: TLabel;
+    lblDateModify: TLabel;
+    lblSize: TLabel;
+    PopupMenu1: TPopupMenu;
+    View1: TMenuItem;
+    thumbnails1: TMenuItem;
+    Details1: TMenuItem;
+    N1: TMenuItem;
+    SortBy1: TMenuItem;
+    Name1: TMenuItem;
+    Date1: TMenuItem;
+    Size1: TMenuItem;
+    NumberofTextures1: TMenuItem;
+    N2: TMenuItem;
+    Ascending1: TMenuItem;
+    Descending1: TMenuItem;
+    AddtoBatch1: TMenuItem;
     procedure FormCreate(Sender: TObject);
     procedure SliderThumbSizeChange(Sender: TObject);
 
@@ -94,7 +116,31 @@ type
     procedure jamListViewItemDblClick(Sender: TCustomEasyListview;
       Button: TCommonMouseButton; MousePos: TPoint; HitInfo: TEasyHitInfoItem);
 
-  private
+    function FindChildNodeByPath(Tree: TVirtualDrawTree; Parent: PVirtualNode;
+      const TargetPath: UnicodeString): PVirtualNode;
+    function NavigateToPath(Tree: TVirtualDrawTree;
+      const Path: UnicodeString): Boolean;
+
+    function GetNodeParent(Node: PVirtualNode): PVirtualNode;
+
+    procedure directoryTreeFocusChanged(Sender: TBaseVirtualTree;
+      Node: PVirtualNode; Column: TColumnIndex);
+    procedure FormShow(Sender: TObject);
+    procedure FormKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
+    procedure Name1Click(Sender: TObject);
+    procedure thumbnails1Click(Sender: TObject);
+    procedure Details1Click(Sender: TObject);
+    procedure Ascending1Click(Sender: TObject);
+    procedure Date1Click(Sender: TObject);
+    procedure Size1Click(Sender: TObject);
+    procedure NumberofTextures1Click(Sender: TObject);
+    procedure PopupMenu1Popup(Sender: TObject);
+    procedure Descending1Click(Sender: TObject);
+    function jamListViewItemCompare(Sender: TCustomEasyListview;
+      Column: TEasyColumn; Group: TEasyGroup; Item1, Item2: TEasyItem;
+      var DoDefault: Boolean): Integer;
+
+  public
     FileList: TStringList;
     ThumbSize: Integer;
     FThumbSize: Integer;
@@ -114,6 +160,9 @@ type
     function GetDriveString(Index: Integer): string;
     function ReadAttributes(const Name: UnicodeString): Cardinal;
     function GenerateThumbnail(srcBmp: TBitmap; maxSize: Integer): TBitmap;
+    procedure SortJams(i: Integer; order: Boolean);
+
+    procedure RefreshDirectoryTree;
 
     procedure QueueThumbnailTask(const FilePath: string);
 
@@ -125,7 +174,7 @@ const
   SupportedExtensions: array [0 .. 1] of string = ('.jam', '.jip');
 
 var
-  JamBrowserFrm: TJamBrowser;
+  JamBrowserFrm: TJamBrowserFrm;
 
 implementation
 
@@ -159,6 +208,7 @@ begin
   RectW := TargetRect.Right - TargetRect.Left;
   RectH := TargetRect.Bottom - TargetRect.Top;
 
+  canvas.Lock;
   if (SrcW <= 0) or (SrcH <= 0) or (RectW <= 0) or (RectH <= 0) then
     Exit;
 
@@ -178,6 +228,7 @@ begin
   // Draw stretched and centered
   Canvas.StretchDraw(Rect(OffsetX, OffsetY, OffsetX + DrawW, OffsetY + DrawH),
     SourceBmp);
+  canvas.unlock;
 end;
 
 // ----------------- utility functions ----------------------------------------------------------------------------------
@@ -248,13 +299,20 @@ end;
 
 // ----------------------------------------------------------------------------------------------------------------------
 
-function TJamBrowser.CanDisplay(const Name: string): Boolean;
+procedure TJamBrowserFrm.Ascending1Click(Sender: TObject);
+begin
+
+  jamListView.Selection.FocusedColumn.SortDirection := esdAscending
+
+end;
+
+function TJamBrowserFrm.CanDisplay(const Name: string): Boolean;
 
 // Determines whether the given file is one we can display in the image tree.
 
 var
   Ext: string;
-  I: Integer;
+  i: Integer;
 
 begin
   if not FExtensionsInitialized then
@@ -263,8 +321,8 @@ begin
     FExtensionList := TStringList.Create;
 {$IFDEF GraphicEx}
     FileFormatList.GetExtensionList(FExtensionList);
-    for I := 0 to FExtensionList.Count - 1 do
-      FExtensionList[I] := '.' + FExtensionList[I];
+    for i := 0 to FExtensionList.Count - 1 do
+      FExtensionList[i] := '.' + FExtensionList[i];
 {$ELSE}
     // GraphicEx is not used so add some default extensions
     with FExtensionList do
@@ -281,12 +339,12 @@ begin
   end;
 
   Ext := ExtractFileExt(Name);
-  Result := FExtensionList.Find(Ext, I);
+  Result := FExtensionList.Find(Ext, i);
 end;
 
 // ----------------------------------------------------------------------------------------------------------------------
 
-function TJamBrowser.GetDriveString(Index: Integer): string;
+function TJamBrowserFrm.GetDriveString(Index: Integer): string;
 
 // Helper method to extract a sub string (given by Index) from FDriveStrings.
 
@@ -310,7 +368,33 @@ begin
   until Head^ = #0;
 end;
 
-procedure TJamBrowser.jamListViewItemDblClick(Sender: TCustomEasyListview;
+
+
+function TJamBrowserFrm.jamListViewItemCompare(Sender: TCustomEasyListview;
+  Column: TEasyColumn; Group: TEasyGroup; Item1, Item2: TEasyItem;
+  var DoDefault: Boolean): Integer;
+var
+  val1, val2: Integer;
+begin
+  Result := 0;
+  if Column.Index = 3 then
+  begin
+    val1 := StrToIntDef(Item1.Captions[3], 0);
+    val2 := StrToIntDef(Item2.Captions[3], 0);
+
+    Result := CompareValue(val1, val2);
+
+    // Flip the result for descending sort
+    if Column.SortDirection = esdDescending then
+      Result := -Result;
+
+    DoDefault := False; // prevent default sorting
+  end
+  else
+    DoDefault := True; // fall back to default sort for other columns
+end;
+
+procedure TJamBrowserFrm.jamListViewItemDblClick(Sender: TCustomEasyListview;
   Button: TCommonMouseButton; MousePos: TPoint; HitInfo: TEasyHitInfoItem);
 begin
 
@@ -318,7 +402,7 @@ begin
 
 end;
 
-procedure TJamBrowser.jamListViewItemFreeing(Sender: TCustomEasyListview;
+procedure TJamBrowserFrm.jamListViewItemFreeing(Sender: TCustomEasyListview;
   Item: TEasyItem);
 begin
   if Assigned(Item.data) then
@@ -329,7 +413,7 @@ begin
   ClearPreview;
 end;
 
-procedure TJamBrowser.jamListViewItemImageDraw(Sender: TCustomEasyListview;
+procedure TJamBrowserFrm.jamListViewItemImageDraw(Sender: TCustomEasyListview;
   Item: TEasyItem; Column: TEasyColumn; ACanvas: TCanvas;
   const RectArray: TEasyRectArrayObject; AlphaBlender: TEasyAlphaBlender);
 var
@@ -339,35 +423,66 @@ begin
   AlphaBlender.Blend(Sender, Item, ACanvas, RectArray.IconRect, img);
 end;
 
-procedure TJamBrowser.jamListViewItemImageDrawIsCustom
+procedure TJamBrowserFrm.jamListViewItemImageDrawIsCustom
   (Sender: TCustomEasyListview; Item: TEasyItem; Column: TEasyColumn;
   var IsCustom: Boolean);
 begin
   IsCustom := True;
 end;
 
-procedure TJamBrowser.jamListViewItemSelectionChanged
+procedure TJamBrowserFrm.jamListViewItemSelectionChanged
   (Sender: TCustomEasyListview; Item: TEasyItem);
 begin
-  ImagePreview.Picture.Bitmap := TJamBrowseNode(Item.data).Orig;
-  lblJamType.Visible := True;
-  lblFilename.Visible := True;
-  lblDimensions.Visible := True;
-  lblTexs.Visible := True;
 
-  lblJamType.Caption := 'Jam Type: ' + TJamBrowseNode(Item.data).jamType;
-  lblFilename.Caption := 'File Name: ' + ExtractFileName
-    (TJamBrowseNode(Item.data).FileName);
-  lblDimensions.Caption := 'Dimensions: ' +
-    inttostr(TJamBrowseNode(Item.data).Width) + ' x ' +
-    inttostr(TJamBrowseNode(Item.data).Height);
-  lblTexs.Caption := 'Number of Textures: ' +
-    inttostr(TJamBrowseNode(Item.data).numTexs);
+  if jamListView.Selection.Count = 0 then
+  begin
+    ImagePreview.visible := false;
+    lblJamType.visible := false;
+    lblFilename.visible := false;
+    lblDimensions.visible := false;
+    lblTexs.visible := false;
+    lblDateCreate.visible := false;
+    lblDateModify.visible := false;
+    lblSize.visible := false;
+
+  end
+  else
+  begin
+
+    ImagePreview.visible := True;
+    ImagePreview.Picture.Bitmap := TJamBrowseNode(Item.data).Orig;
+    lblJamType.visible := True;
+    lblFilename.visible := True;
+    lblDimensions.visible := True;
+    lblTexs.visible := True;
+    lblDateCreate.visible := True;
+    lblDateModify.visible := True;
+    lblSize.visible := True;
+
+    lblJamType.Caption := 'Jam Type: ' + TJamBrowseNode(Item.data).jamType;
+    lblFilename.Caption := 'File Name: ' +
+      ExtractFileName(TJamBrowseNode(Item.data).FileName);
+    lblDimensions.Caption := 'Dimensions: ' +
+      inttostr(TJamBrowseNode(Item.data).Width) + ' x ' +
+      inttostr(TJamBrowseNode(Item.data).Height);
+    lblTexs.Caption := 'Number of Textures: ' +
+      inttostr(TJamBrowseNode(Item.data).numTexs);
+
+    lblDateCreate.Caption := 'Date Created: ' +
+      DateToStr(TJamBrowseNode(Item.data).dateCreated);
+
+    lblDateModify.Caption := 'Date Modified: ' +
+      DateToStr(TJamBrowseNode(Item.data).dateModified);
+
+    lblSize.Caption := 'Size: ' + FormatFileSize
+      (TJamBrowseNode(Item.data).size);
+  end;
+
 end;
 
 // ----------------------------------------------------------------------------------------------------------------------
 
-function TJamBrowser.ReadAttributes(const Name: UnicodeString): Cardinal;
+function TJamBrowserFrm.ReadAttributes(const Name: UnicodeString): Cardinal;
 
 // Determines the attributes of the given shell object (file, folder).
 
@@ -392,88 +507,126 @@ begin
   Malloc.Free(PIDL);
 end;
 
-function TJamBrowser.GenerateThumbnail(srcBmp: TBitmap;
-  maxSize: Integer): TBitmap;
+function TJamBrowserFrm.GenerateThumbnail(srcBmp: TBitmap; maxSize: Integer): TBitmap;
 var
-  Ratio, ScaleW, ScaleH: Double;
-  ThumbW, ThumbH: Integer;
-  TempBmp, ResizedBmp: TBitmap;
-  OffsetX, OffsetY: Integer;
-  PaddingFactor: Double;
-   RS: TResourceStream;
+  TempBmp, ThumbBmp: TBitmap;
+  RS: TResourceStream;
   PNG: TPngImage;
+  Ratio: Double;
+  ThumbW, ThumbH, OffsetX, OffsetY: Integer;
+const
+  PaddingFactor = 0.95;
 begin
   Result := nil;
-
-  RS := TResourceStream.Create(HInstance, 'noJamPreview', RT_RCDATA);
-  PNG := TPngImage.Create;
-  PNG.LoadFromStream(RS);
-
-  PaddingFactor := 0.95;
-
-  resizedbmp := TBitmap.create;
   TempBmp := TBitmap.Create;
   try
-    TempBmp.Assign(srcBmp);
-
-    if (srcBmp.Width < 16) or  (srcBmp.Height < 16) then
+    // Choose source: preview icon if too small
+    if (srcBmp.Width < 16) or (srcBmp.Height < 16) then
     begin
-{$R-}
-      TempBmp.Assign(png);
-      // Scale to fit within padding-adjusted square
-      ScaleW := (maxSize * PaddingFactor) / TempBmp.Width;
-      ScaleH := (maxSize * PaddingFactor) / TempBmp.Height;
-      Ratio := Min(ScaleW, ScaleH);
-
-      ThumbW := Round(TempBmp.Width * Ratio);
-      ThumbH := Round(TempBmp.Height * Ratio);
-
-      // Resize with high-quality routine
-      ResizedBmp := StretchF(TempBmp, ThumbW, ThumbH);
+      RS := TResourceStream.Create(HInstance, 'noJamPreview', RT_RCDATA);
+      PNG := TPngImage.Create;
+      try
+        PNG.LoadFromStream(RS);
+        TempBmp.Assign(PNG);
+      finally
+        PNG.Free;
+        RS.Free;
+      end;
     end
     else
-    begin
-//    showmessage('just right');
+      TempBmp.Assign(srcBmp);
 
-      // Scale to fit within padding-adjusted square
-      ScaleW := (maxSize * PaddingFactor) / TempBmp.Width;
-      ScaleH := (maxSize * PaddingFactor) / TempBmp.Height;
-      Ratio := Min(ScaleW, ScaleH);
+    // Calculate size
+    Ratio := Min((maxSize * PaddingFactor) / TempBmp.Width,
+                 (maxSize * PaddingFactor) / TempBmp.Height);
+    ThumbW := Round(TempBmp.Width * Ratio);
+    ThumbH := Round(TempBmp.Height * Ratio);
 
-      ThumbW := Round(TempBmp.Width * Ratio);
-      ThumbH := Round(TempBmp.Height * Ratio);
+    // Create thumbnail
+    ThumbBmp := StretchF(TempBmp, ThumbW, ThumbH);
+    if not Assigned(ThumbBmp) then Exit;
 
-      // Resize with high-quality routine
-      ResizedBmp := StretchF(TempBmp, ThumbW, ThumbH);
-{$R+}
-    end;
-
-
-    // Create result bitmap with background color from JamListView.Color
+    // Build final image
     Result := TBitmap.Create;
     Result.PixelFormat := pf24bit;
     Result.SetSize(maxSize, maxSize);
     Result.Canvas.Brush.Color := jamListView.Color;
     Result.Canvas.FillRect(Rect(0, 0, maxSize, maxSize));
 
-    // Center resized thumbnail on canvas
     OffsetX := (maxSize - ThumbW) div 2;
     OffsetY := (maxSize - ThumbH) div 2;
-
-    Result.Canvas.Draw(OffsetX, OffsetY, ResizedBmp);
-
-    if Assigned(ResizedBmp) then
-      ResizedBmp.Free;
+    Result.Canvas.Draw(OffsetX, OffsetY, ThumbBmp);
   finally
-    if Assigned(TempBmp) then
-      TempBmp.Free;
+    TempBmp.Free;
+    ThumbBmp.Free;
   end;
 end;
 
-procedure TJamBrowser.FormCreate(Sender: TObject);
+
+//function TJamBrowser.GenerateThumbnail(srcBmp: TBitmap;
+//  maxSize: Integer): TBitmap;
+//var
+//  TempBmp, ThumbBmp: TBitmap;
+//  RS: TResourceStream;
+//  PNG: TPngImage;
+//  Ratio: Double;
+//  ThumbW, ThumbH: Integer;
+//  OffsetX, OffsetY: Integer;
+//const
+//  PaddingFactor = 0.95;
+//begin
+//  Result := nil;
+//  TempBmp := TBitmap.Create;
+//  ThumbBmp := nil;
+//  try
+//    // Choose source: preview icon if too small, otherwise original
+//    if (srcBmp.Width < 16) or (srcBmp.Height < 16) then
+//    begin
+//      RS := TResourceStream.Create(HInstance, 'noJamPreview', RT_RCDATA);
+//      PNG := TPngImage.Create;
+//      try
+//        PNG.LoadFromStream(RS);
+//        TempBmp.Assign(PNG);
+//      finally
+//        PNG.Free;
+//        RS.Free;
+//      end;
+//    end
+//    else
+//      TempBmp.Assign(srcBmp);
+//
+//    // Determine thumbnail size
+//    Ratio := Min((maxSize * PaddingFactor) / TempBmp.Width,
+//      (maxSize * PaddingFactor) / TempBmp.Height);
+//    ThumbW := Round(TempBmp.Width * Ratio);
+//    ThumbH := Round(TempBmp.Height * Ratio);
+//
+//    // Create resized thumbnail
+//    ThumbBmp := StretchF(TempBmp, ThumbW, ThumbH);
+//
+//    // Prepare final canvas
+//    Result := TBitmap.Create;
+//    result.Canvas.lock;
+//    Result.PixelFormat := pf24bit;
+//    Result.SetSize(maxSize, maxSize);
+//    Result.Canvas.Brush.Color := jamListView.Color;
+//    Result.Canvas.FillRect(Rect(0, 0, maxSize, maxSize));
+//
+//    // Center and draw
+//    OffsetX := (maxSize - ThumbW) div 2;
+//    OffsetY := (maxSize - ThumbH) div 2;
+//    Result.Canvas.Draw(OffsetX, OffsetY, ThumbBmp);
+//    result.canvas.Unlock;
+//  finally
+//    TempBmp.Free;
+//    ThumbBmp.Free;
+//  end;
+//end;
+
+procedure TJamBrowserFrm.FormCreate(Sender: TObject);
 var
   SFI: TSHFileInfo;
-  I, DriveCount: Integer;
+  i, DriveCount: Integer;
   Len: Integer;
   DriveMap, Mask: Cardinal;
 
@@ -496,7 +649,7 @@ begin
   DriveCount := 0;
   DriveMap := GetLogicalDrives;
   Mask := 1;
-  for I := 0 to 25 do
+  for i := 0 to 25 do
   begin
     if (DriveMap and Mask) <> 0 then
       Inc(DriveCount);
@@ -506,22 +659,55 @@ begin
   Len := GetLogicalDriveStrings(0, nil);
   SetLength(FDriveStrings, Len);
   GetLogicalDriveStrings(Len, PChar(FDriveStrings));
+
   directoryTree.RootNodeCount := DriveCount;
 
   SystemImages.Handle := SHGetFileInfo('', 0, SFI, SizeOf(SFI),
     SHGFI_SYSICONINDEX or SHGFI_SMALLICON);
   SystemImages.ShareImages := True;
-
   FThumbSize := 200;
+
+  // NavigateToPath(directoryTree,strBrowserPath);
 end;
 
-procedure TJamBrowser.FormDestroy(Sender: TObject);
+procedure TJamBrowserFrm.FormDestroy(Sender: TObject);
 begin
   jamListView.items.Clear;
-  FreeAndNil(FExtensionList);
+  filelist.free;
 end;
 
-procedure TJamBrowser.SliderThumbSizeChange(Sender: TObject);
+procedure TJamBrowserFrm.FormKeyDown(Sender: TObject; var Key: Word;
+  Shift: TShiftState);
+var
+  tmpStrPath: string;
+
+begin
+  tmpStrPath := strBrowserPath;
+  if Key = VK_F5 then
+  begin
+
+    RefreshDirectoryTree;
+    NavigateToPath(directoryTree, tmpStrPath);
+    LoadImagesFromFolderAsync(tmpStrPath);
+    Key := 0;
+  end;
+end;
+
+procedure TJamBrowserFrm.FormShow(Sender: TObject);
+begin
+  NavigateToPath(directoryTree, strBrowserPath);
+end;
+
+procedure TJamBrowserFrm.Size1Click(Sender: TObject);
+begin
+  SortJams(2, True);
+  Name1.Checked := false;
+  Date1.Checked := false;
+  Size1.Checked := True;
+  NumberofTextures1.Checked := false;
+end;
+
+procedure TJamBrowserFrm.SliderThumbSizeChange(Sender: TObject);
 begin
   ThumbSize := SliderThumbSize.Position;
   jamListView.CellSizes.Thumbnail.SetSize(ThumbSize, ThumbSize + 40);
@@ -529,41 +715,44 @@ begin
 
 end;
 
-procedure TJamBrowser.LoadImagesFromFolderAsync(const Folder: string);
+procedure TJamBrowserFrm.LoadImagesFromFolderAsync(const Folder: string);
 begin
 
-  TTask.Run(
-    procedure
-    begin
-      LoadImagesWorker(Folder);
-    end);
+TTask.Run(procedure begin LoadImagesWorker(Folder)end);
 end;
 
-procedure TJamBrowser.QueueThumbnailTask(const FilePath: string);
+procedure TJamBrowserFrm.QueueThumbnailTask(const FilePath: string);
 var
   JamFile: TJamFile;
   HWJamFile: THWJamFile;
   Thumb: TBitmap;
-  JamThumb: TJamBrowseNode;
-  Item: TEasyItem;
+  Node: TJamBrowseNode;
   jamType: string;
   Height, Width, numTexs: Integer;
+  jamPal: TJamType;
+  i: Integer;
+  data: WIN32_FILE_ATTRIBUTE_DATA;
+  SystemTime: TSystemTime;
+  LocalFileTime: TFileTime;
 
 begin
   Thumb := nil;
-  JamThumb := nil;
-
+  Node := nil;
   try
-    // 1) Load & draw into Thumb, freeing file-object immediately afterward
+TThread.Queue(nil,procedure
+
+    var
+  i : integer;
+
+begin
+    // Detect and load JAM or JIP
     if isHWJAM(FilePath) then
     begin
       HWJamFile := THWJamFile.Create;
       try
         HWJamFile.LoadFromFile(FilePath);
-        Thumb := HWJamFile.DrawCanvas(false);
+        Thumb := HWJamFile.DrawCanvas(False);
         jamType := 'Hardware JAM File';
-        Height := Thumb.Height;
-        Width := Thumb.Width;
         numTexs := HWJamFile.FEntries.Count;
       finally
         HWJamFile.Free;
@@ -573,125 +762,162 @@ begin
     begin
       JamFile := TJamFile.Create;
       try
+        jamPal := TJamPaletteDetector.Instance.Detect(FilePath, False);
+        case jamPal of
+          jamGP2:  for i := 0 to 255 do GPXPal[i] := Gp2Pal[i];
+          jamGP3SW: for i := 0 to 255 do GPXPal[i] := Gp3Pal[i];
+        end;
+
         JamFile.LoadFromFile(FilePath, True);
-        Thumb := JamFile.DrawFullJam(false);
-        jamType := 'Software JAM File';
-        if TPath.GetExtension(FilePath) = 'jip' then
-          jamType := 'Software JIP File';
-        Height := Thumb.Height;
-        Width := Thumb.Width;
+        Thumb := JamFile.DrawFullJam(False);
+        jamType := IfThen(TPath.GetExtension(FilePath) = '.jip', 'Software JIP File', 'Software JAM File');
         numTexs := JamFile.FEntries.Count;
       finally
         JamFile.Free;
       end;
+    end;end);
+
+
+    if not Assigned(Thumb) then Exit;
+    Height := Thumb.Height;
+    Width := Thumb.Width;
+
+    // Build node (off-thread)
+    Node := TJamBrowseNode.Create;
+    Node.FileName := FilePath;
+    Node.Orig := Thumb;
+    Thumb := nil; // ownership transferred
+    Node.Thumb := GenerateThumbnail(Node.Orig, ThumbSize);
+    Node.Height := Height;
+    Node.Width := Width;
+    Node.numTexs := numTexs;
+    Node.jamType := jamType;
+
+    // Read file metadata
+    if GetFileAttributesEx(PChar(FilePath), GetFileExInfoStandard, @data) then
+    begin
+      Node.size := (Int64(data.nFileSizeHigh) shl 32) or data.nFileSizeLow;
+
+      FileTimeToLocalFileTime(data.ftCreationTime, LocalFileTime);
+      FileTimeToSystemTime(LocalFileTime, SystemTime);
+      Node.dateCreated := SystemTimeToDateTime(SystemTime);
+
+      FileTimeToLocalFileTime(data.ftLastWriteTime, LocalFileTime);
+      FileTimeToSystemTime(LocalFileTime, SystemTime);
+      Node.dateModified := SystemTimeToDateTime(SystemTime);
     end;
 
-    // 2) Build the browse-node and add it to the listview
-    // If anything goes wrong here, free both Thumb and JamThumb.
-    try
-      JamThumb := TJamBrowseNode.Create;
-      JamThumb.FileName := FilePath;
+     TThread.Queue(nil,procedure
+     var  Item: TEasyItem;
 
-        JamThumb.Orig := Thumb; // store original image
-        JamThumb.Thumb := GenerateThumbnail(Thumb, ThumbSize);
+     begin
+        Item := jamListView.Items.Add(Node);
+        Item.Caption := ExtractFileName(Node.FileName);
+        Item.Captions[1] := DateToStr(Node.dateModified);
+        Item.Captions[2] := FormatFileSize(Node.size);
+        Item.Captions[3] := IntToStr(Node.numTexs);
 
+        Inc(FLoadedThumbnails);
+        ProgressBar.Position := FLoadedThumbnails;
+        jamLoading.Caption := Format('Loading JAM %d of %d', [FLoadedThumbnails, FPendingThumbnails]);
+        jamloading.Refresh;
+        jambrowserfrm.Repaint;
 
-      JamThumb.Height := Height;
-      JamThumb.Width := Width;
-      JamThumb.numTexs := numTexs;
-      JamThumb.jamType := jamType;
+        if FLoadedThumbnails = FPendingThumbnails then
+        begin
+          ProgressBar.Visible := False;
+          jamLoading.Visible := False;
+        end;
+        end);
 
-      Item := jamListView.items.Add(JamThumb);
-      Item.Caption := ExtractFileName(JamThumb.FileName);
-
-      // 3) Update progress
-      Inc(FLoadedThumbnails);
-      jamLoading.Caption := 'Loading JAM ' + inttostr(FLoadedThumbnails) +
-        ' of ' + inttostr(FPendingThumbnails);
-      ProgressBar.Position := FLoadedThumbnails;
-
-    except
-      // cleanup on error
-      if Assigned(Thumb) then
-        Thumb.Free;
-      if Assigned(JamThumb) then
-        JamThumb.Free;
-      raise;
-    end;
-
+    Node := nil; // prevent freeing in finally
   finally
-    // nothing else to free here: file objects already freed, thumbs transferred to node
+    Thumb.Free;
+    Node.Free;
   end;
+    jamListView.Sort.SortAll();
 end;
 
-procedure TJamBrowser.LoadImagesWorker(const Folder: string);
+procedure TJamBrowserFrm.LoadImagesWorker(const Folder: string);
 var
   SR: TSearchRec;
-  Ext: string;
-  I: Integer;
-  NewList: TStringList;
-  LocalToken: Integer;
+  NewList,CopiedList: TStringList;
+  FileExt: string;
+  i: Integer;
 begin
-  LocalToken := FCancelToken;
   NewList := TStringList.Create;
-
-  if FindFirst(Folder + '\*.*', faAnyFile, SR) = 0 then
-  begin
-    repeat
-      if (SR.Attr and faDirectory = 0) then
-      begin
-        Ext := LowerCase(ExtractFileExt(SR.Name));
-        for I := Low(SupportedExtensions) to High(SupportedExtensions) do
-          if Ext = SupportedExtensions[I] then
-          begin
-            if SR.Name = 'shill.jam' then
-              Exit;
-            NewList.Add(Folder + '\' + SR.Name);
-            Break;
-          end;
-      end;
-    until FindNext(SR) <> 0;
-    FindClose(SR);
-  end;
-
-  jamListView.items.Clear;
-  jamListView.BeginUpdate;
-  TThread.Queue(nil,
-    procedure
-    var
-      I: Integer;
+  try
+    // Off-thread file scanning
+    if FindFirst(Folder + '\*.*', faAnyFile, SR) = 0 then
     begin
-      FileList.Assign(NewList);
+      repeat
+        if (SR.Attr and faDirectory = 0) then
+        begin
+          FileExt := LowerCase(ExtractFileExt(SR.Name));
+          if (FileExt = '.jam') or (FileExt = '.jip') then
+            if not SameText(SR.Name, 'shill.jam') then
+              NewList.Add(Folder + '\' + SR.Name);
+        end;
+      until FindNext(SR) <> 0;
+      FindClose(SR);
+    end;
 
-      ProgressBar.Max := FileList.Count;
-      ProgressBar.Position := 0;
-      ProgressBar.Visible := True;
+    // Backup palette (off-thread is okay)
+    for i := 0 to 255 do
+      tmpPal[i] := GPXPal[i];
 
-      jamLoading.Visible := True;
+    CopiedList := TStringList.Create;
+    CopiedList.Assign(NewList);
 
-      FPendingThumbnails := FileList.Count;
-      FLoadedThumbnails := 0;
+TThread.Queue(nil,procedure
+      var
+        x: Integer;
+      begin
+        Self.jamListView.BeginUpdate;
+        try
+          Self.jamListView.Items.Clear;
+          Self.FileList.Assign(copiedlist);
 
-      for I := 0 to FileList.Count - 1 do
-        QueueThumbnailTask(FileList[I]);
+          Self.ProgressBar.Max := Self.FileList.Count;
+          Self.ProgressBar.Position := 0;
+          Self.ProgressBar.Visible := True;
 
-      ProgressBar.Visible := false; // move this inside synchronized block
-      jamLoading.Visible := false;
-      NewList.Free;
-    end);
-  jamListView.EndUpdate;
+          Self.jamLoading.Visible := True;
 
+          Self.FPendingThumbnails := Self.FileList.Count;
+          Self.FLoadedThumbnails := 0;
+
+          for x := 0 to Self.FileList.Count - 1 do
+          begin
+            Self.QueueThumbnailTask(Self.FileList[x]);
+            Application.ProcessMessages;
+          end;
+        finally
+          Self.jamListView.EndUpdate;
+          copiedlist.free;
+          Self.jamLoading.Visible := false;
+        end;
+      end)
+
+  finally
+    NewList.Free;
+    // Restore palette (can be done off-thread)
+    for i := 0 to 255 do
+      GPXPal[i] := tmpPal[i];
+  end;
 end;
 
-procedure TJamBrowser.RedrawThumbnails;
+
+
+procedure TJamBrowserFrm.RedrawThumbnails;
 var
-  I: Integer;
+  i: Integer;
   Node: TJamBrowseNode;
   NewThumb: TBitmap;
 begin
-  for I := 0 to jamListView.items.Count - 1 do
+  for i := 0 to jamListView.items.Count - 1 do
   begin
-    Node := TJamBrowseNode(jamListView.items[I].data);
+    Node := TJamBrowseNode(jamListView.items[i].data);
     if not Assigned(Node) then
       Continue;
 
@@ -699,25 +925,76 @@ begin
     FreeAndNil(Node.Thumb);
     Node.Thumb := NewThumb;
 
-    jamListView.items[I].Invalidate(True); // Redraw only that item
+    jamListView.items[i].Invalidate(True); // Redraw only that item
   end;
 
   // Optional: if using per-item invalidation above, you don't need this
-  // jamListView.Invalidate;
+  jamListView.Invalidate;
 end;
 
-procedure TJamBrowser.directoryTreeChange(Sender: TBaseVirtualTree;
+procedure TJamBrowserFrm.directoryTreeChange(Sender: TBaseVirtualTree;
 Node: PVirtualNode);
-VAR
+var
   data: PShellObjectData;
 begin
   ImagePreview.Picture := nil;
   data := Sender.GetNodeData(Node);
   if data <> nil then
     LoadImagesFromFolderAsync(data.FullPath);
+
+  strBrowserPath := data.FullPath;
+
 end;
 
-procedure TJamBrowser.directoryTreeCompareNodes(Sender: TBaseVirtualTree;
+procedure TJamBrowserFrm.RefreshDirectoryTree;
+var
+  i, DriveCount, Len: Integer;
+  DriveMap, Mask: DWORD;
+  PreviousPath: string;
+begin
+  Screen.Cursor := crHourGlass;
+  try
+    // Store previous selection path before clearing
+    PreviousPath := strBrowserPath;
+
+    directoryTree.BeginUpdate;
+    try
+      // Prevent reentry during update
+      directoryTree.Clear;
+
+      // Recalculate drives
+      DriveCount := 0;
+      DriveMap := GetLogicalDrives;
+      Mask := 1;
+      for i := 0 to 25 do
+      begin
+        if (DriveMap and Mask) <> 0 then
+          Inc(DriveCount);
+        Mask := Mask shl 1;
+      end;
+
+      // Refresh drive strings
+      Len := GetLogicalDriveStrings(0, nil);
+      SetLength(FDriveStrings, Len);
+      GetLogicalDriveStrings(Len, PChar(FDriveStrings));
+
+      // Set root nodes (this will cause InitNode to be called)
+      directoryTree.RootNodeCount := DriveCount;
+
+    finally
+      directoryTree.EndUpdate;
+    end;
+
+    // // Navigate after EndUpdate to avoid recursion
+    // if DirectoryExists(PreviousPath) then
+    // NavigateToPath(directoryTree, PreviousPath);
+
+  finally
+    Screen.Cursor := crDefault;
+  end;
+end;
+
+procedure TJamBrowserFrm.directoryTreeCompareNodes(Sender: TBaseVirtualTree;
 Node1, Node2: PVirtualNode; Column: TColumnIndex; var Result: Integer);
 // The node comparison routine is the heart of the tree sort. Here we have to tell the caller which node we consider
 // being "larger" or "smaller".
@@ -746,7 +1023,7 @@ begin
     Result := CompareText(Data1.FullPath, Data2.FullPath);
 end;
 
-procedure TJamBrowser.directoryTreeDrawNode(Sender: TBaseVirtualTree;
+procedure TJamBrowserFrm.directoryTreeDrawNode(Sender: TBaseVirtualTree;
 const PaintInfo: TVTPaintInfo);
 // This is the main paint routine for a node in a draw tree. There is nothing special here. Demonstrating the
 // specific features of a draw tree (compared to the string tree) is a bit difficult, since the only difference is
@@ -754,7 +1031,7 @@ const PaintInfo: TVTPaintInfo);
 
 var
   data: PShellObjectData;
-  X: Integer;
+  x: Integer;
   S: UnicodeString;
   R: TRect;
 
@@ -762,6 +1039,7 @@ begin
   with Sender as TVirtualDrawTree, PaintInfo do
   begin
     data := Sender.GetNodeData(Node);
+    canvas.lock;
     if (Column = FocusedColumn) and (Selected[Node]) then
       Canvas.Font.Color := clHighlightText
     else if (data.Attributes and SFGAO_COMPRESSED) <> 0 then
@@ -801,17 +1079,51 @@ begin
         begin
           if Assigned(data.Image) then
           begin
-            X := ContentRect.Left + (directoryTree.Header.Columns[1].Width -
+            x := ContentRect.Left + (directoryTree.Header.Columns[1].Width -
               data.Image.Width - Margin) div 2;
-            BitBlt(Canvas.Handle, X, ContentRect.Top + 2, data.Image.Width,
+            BitBlt(Canvas.Handle, x, ContentRect.Top + 2, data.Image.Width,
               data.Image.Height, data.Image.Canvas.Handle, 0, 0, SRCCOPY);
           end;
         end;
     end;
   end;
+  canvas.Unlock;
 end;
 
-procedure TJamBrowser.directoryTreeFreeNode(Sender: TBaseVirtualTree;
+//procedure TJamBrowser.directoryTreeFocusChanged(Sender: TBaseVirtualTree;
+//Node: PVirtualNode; Column: TColumnIndex);
+//var
+//  data: PShellObjectData;
+//begin
+//  ImagePreview.Picture := nil;
+//  data := Sender.GetNodeData(Node);
+//  if data <> nil then
+//    LoadImagesFromFolderAsync(data.FullPath);
+//
+//  strBrowserPath := data.FullPath;
+//end;
+
+procedure TJamBrowserFrm.directoryTreeFocusChanged(Sender: TBaseVirtualTree;
+  Node: PVirtualNode; Column: TColumnIndex);
+var
+  data: PShellObjectData;
+begin
+  ImagePreview.Picture := nil;
+
+  if not Assigned(Node) then Exit;
+  data := Sender.GetNodeData(Node);
+  if not Assigned(data) then Exit;
+
+  if DirectoryExists(data.FullPath) then
+  begin
+    LoadImagesFromFolderAsync(data.FullPath);
+    strBrowserPath := data.FullPath;
+  end
+  else
+    OutputDebugString(PChar('Invalid directory: ' + data.FullPath));
+end;
+
+procedure TJamBrowserFrm.directoryTreeFreeNode(Sender: TBaseVirtualTree;
 Node: PVirtualNode);
 var
   data: PShellObjectData;
@@ -822,7 +1134,7 @@ begin
   Finalize(data^); // Clear string data.
 end;
 
-procedure TJamBrowser.directoryTreeGetImageIndex(Sender: TBaseVirtualTree;
+procedure TJamBrowserFrm.directoryTreeGetImageIndex(Sender: TBaseVirtualTree;
 Node: PVirtualNode; Kind: TVTImageKind; Column: TColumnIndex;
 var Ghosted: Boolean; var Index: TImageIndex);
 var
@@ -849,7 +1161,7 @@ begin
   end;
 end;
 
-procedure TJamBrowser.directoryTreeGetNodeWidth(Sender: TBaseVirtualTree;
+procedure TJamBrowserFrm.directoryTreeGetNodeWidth(Sender: TBaseVirtualTree;
 HintCanvas: TCanvas; Node: PVirtualNode; Column: TColumnIndex;
 var NodeWidth: TDimension);
 
@@ -863,6 +1175,7 @@ var
 begin
   with Sender as TVirtualDrawTree do
     AMargin := TextMargin;
+    canvas.lock;
 
   begin
     data := Sender.GetNodeData(Node);
@@ -884,9 +1197,10 @@ begin
         NodeWidth := Canvas.TextWidth(data.Properties) + 2 * AMargin;
     end;
   end;
+  canvas.Unlock;
 end;
 
-procedure TJamBrowser.directoryTreeInitChildren(Sender: TBaseVirtualTree;
+procedure TJamBrowserFrm.directoryTreeInitChildren(Sender: TBaseVirtualTree;
 Node: PVirtualNode; var ChildCount: Cardinal);
 // Called just before a node with children (only folder nodes can have children) is expanded.
 
@@ -915,11 +1229,11 @@ begin
             ChildData.FullPath := NewName;
             ChildData.Attributes := ReadAttributes(NewName);
             if (ChildData.Attributes and SFGAO_FOLDER) = 0 then
-              ChildData.Properties := Format('%n KB, ', [SR.Size / 1024]);
+              ChildData.Properties := Format('%n KB, ', [SR.size / 1024]);
             GetOpenAndClosedIcons(ChildData.FullPath, ChildData.OpenIndex,
               ChildData.CloseIndex);
 
-            Sender.ValidateNode(Node, false);
+            // Sender.ValidateNode(Node, false);
             Inc(ChildCount);
           end;
         end;
@@ -936,7 +1250,7 @@ begin
   end;
 end;
 
-procedure TJamBrowser.directoryTreeInitNode(Sender: TBaseVirtualTree;
+procedure TJamBrowserFrm.directoryTreeInitNode(Sender: TBaseVirtualTree;
 ParentNode, Node: PVirtualNode; var InitialStates: TVirtualNodeInitStates);
 var
   data: PShellObjectData;
@@ -963,16 +1277,18 @@ begin
           Picture.LoadFromFile(data.FullPath);
           if not(Picture.Graphic is TBitmap) then
           begin
-            // Some extra steps needed to keep non TBitmap descentants alive when
+            // Some extra steps needed to keep non TBitmap descendants alive when
             // scaling. This is needed because when accessing Picture.Bitmap all
-            // non-TBitmap content will simply be erased (definitly the wrong
+            // non-TBitmap content will simply be erased (definitely the wrong
             // action, but we can't do anything to prevent this). Hence we
             // must explicitly draw the graphic to a bitmap.
             with data.Image do
             begin
+              canvas.lock;
               Width := Picture.Width;
               Height := Picture.Height;
               Canvas.Draw(0, 0, Picture.Graphic);
+              canvas.Unlock;
             end;
             Picture.Bitmap.Assign(data.Image);
           end;
@@ -1017,16 +1333,209 @@ begin
 
 end;
 
-procedure TJamBrowser.ClearPreview();
+/// finds among Parent’s immediate children a node whose Data.FullPath
+/// (minus any trailing slash) matches TargetPath (minus any trailing slash)
+function TJamBrowserFrm.FindChildNodeByPath(Tree: TVirtualDrawTree;
+Parent: PVirtualNode; const TargetPath: UnicodeString): PVirtualNode;
+var
+  Child: PVirtualNode;
+  data: PShellObjectData;
+  normTarget: string;
+begin
+  Result := nil;
+  normTarget := ExcludeTrailingBackslash(TargetPath);
+  Child := Tree.GetFirstChild(Parent);
+  while Assigned(Child) do
+  begin
+    data := Tree.GetNodeData(Child);
+    if SameText(ExcludeTrailingBackslash(data.FullPath), normTarget) then
+    begin
+      Result := Child;
+      Exit;
+    end;
+    Child := Tree.GetNextSibling(Child);
+  end;
+end;
+
+procedure TJamBrowserFrm.SortJams(i: Integer; order: Boolean);
+var
+  x: Integer;
+  PreviousFocusedColumn: TEasyColumn;
+  PreviousOrder: TEasySortDirection;
+begin
+  jamListView.BeginUpdate;
+  PreviousFocusedColumn := jamListView.Selection.FocusedColumn;
+  PreviousOrder := jamListView.Selection.FocusedColumn.SortDirection;
+
+  jamListView.Selection.FocusedColumn := jamListView.Header.Columns.Columns[i];
+
+  jamListView.Selection.FocusedColumn.SortDirection := PreviousOrder;
+
+  PreviousFocusedColumn.SortDirection := esdNone;
+
+  jamListView.Sort.ReGroup(jamListView.Selection.FocusedColumn);
+
+  jamListView.Sort.SortAll();
+  jamListView.EndUpdate();
+end;
+
+procedure TJamBrowserFrm.Name1Click(Sender: TObject);
+begin
+  SortJams(0, True);
+  Name1.Checked := True;
+
+  Date1.Checked := false;
+  Size1.Checked := false;
+  NumberofTextures1.Checked := false;
+end;
+
+function TJamBrowserFrm.NavigateToPath(Tree: TVirtualDrawTree;
+const Path: UnicodeString): Boolean;
+var
+  parts: TStringList;
+  i: Integer;
+  segment, cumulative: string;
+  currNode: PVirtualNode;
+  nodeData: PShellObjectData;
+begin
+  Result := false;
+  if not DirectoryExists(Path) then
+    Exit;
+
+  parts := TStringList.Create;
+  try
+    ExtractStrings([PathDelim], [], PChar(Path), parts);
+    if parts.Count = 0 then
+      Exit;
+
+    Tree.BeginUpdate;
+    try
+      cumulative := '';
+      currNode := nil;
+
+      for i := 0 to parts.Count - 1 do
+      begin
+        // Rebuild the path incrementally
+        if i = 0 then
+          cumulative := parts[i] + PathDelim
+        else
+          cumulative := IncludeTrailingBackslash(cumulative) + parts[i];
+
+        if i = 0 then
+          currNode := FindChildNodeByPath(Tree, nil, cumulative)
+        else
+        begin
+          if not Assigned(currNode) then
+            Exit;
+
+          // Only validate if not already initialized
+          if not(vsInitialized in currNode.States) then
+            Tree.ValidateNode(currNode, True);
+
+          // Only expand if not already expanded
+          if not Tree.Expanded[currNode] then
+            Tree.Expanded[currNode] := True;
+
+          currNode := FindChildNodeByPath(Tree, currNode, cumulative);
+        end;
+
+        if not Assigned(currNode) then
+          Exit;
+      end;
+
+      // Select final node
+      Tree.ClearSelection;
+      Tree.FocusedNode := currNode;
+      Tree.Selected[currNode] := True;
+      Tree.ScrollIntoView(currNode, True);
+      Tree.Invalidate;
+
+      // Update current path
+      nodeData := Tree.GetNodeData(currNode);
+      if Assigned(nodeData) then
+        strBrowserPath := nodeData.FullPath;
+
+      Result := True;
+    finally
+      Tree.EndUpdate;
+    end;
+  finally
+    parts.Free;
+  end;
+end;
+
+procedure TJamBrowserFrm.NumberofTextures1Click(Sender: TObject);
+begin
+  SortJams(3, True);
+  Name1.Checked := false;
+  Date1.Checked := false;
+  Size1.Checked := false;
+  NumberofTextures1.Checked := True;
+end;
+
+procedure TJamBrowserFrm.PopupMenu1Popup(Sender: TObject);
+begin
+  if jamListView.Selection.FocusedColumn.SortDirection = esdAscending then
+    Ascending1.Checked := True
+  else
+    Ascending1.Checked := false;
+
+  if jamListView.Selection.FocusedColumn.SortDirection = esddescending then
+    Descending1.Checked := True
+  else
+    Descending1.Checked := false;
+
+end;
+
+function TJamBrowserFrm.GetNodeParent(Node: PVirtualNode): PVirtualNode;
+begin
+  if Assigned(Node) and (Node.Parent <> directoryTree.RootNode) then
+    Result := Node.Parent
+  else
+    Result := nil;
+end;
+
+procedure TJamBrowserFrm.thumbnails1Click(Sender: TObject);
+begin
+  jamListView.View := elsThumbnail;
+  thumbnails1.Checked := True;
+  Details1.Checked := false;
+end;
+
+procedure TJamBrowserFrm.ClearPreview();
 begin
 
   ImagePreview.Picture := nil;
 
-  lblJamType.Visible := false;
-  lblFilename.Visible := false;
-  lblDimensions.Visible := false;
-  lblTexs.Visible := false;
+  lblJamType.visible := false;
+  lblFilename.visible := false;
+  lblDimensions.visible := false;
+  lblTexs.visible := false;
 
 end;
+
+procedure TJamBrowserFrm.Date1Click(Sender: TObject);
+begin
+  SortJams(1, True);
+  Name1.Checked := false;
+  Date1.Checked := True;
+  Size1.Checked := false;
+  NumberofTextures1.Checked := false;
+end;
+
+procedure TJamBrowserFrm.Descending1Click(Sender: TObject);
+begin
+  jamListView.Selection.FocusedColumn.SortDirection := esddescending
+end;
+
+procedure TJamBrowserFrm.Details1Click(Sender: TObject);
+begin
+  jamListView.View := elsReport;
+
+  thumbnails1.Checked := false;
+  Details1.Checked := True;
+end;
+
+
 
 end.

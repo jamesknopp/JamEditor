@@ -1,4 +1,4 @@
-object JamBrowser: TJamBrowser
+object JamBrowserFrm: TJamBrowserFrm
   Left = 0
   Top = 0
   Caption = 'Jam Browser'
@@ -10,8 +10,13 @@ object JamBrowser: TJamBrowser
   Font.Height = -12
   Font.Name = 'Segoe UI'
   Font.Style = []
+  KeyPreview = True
+  Position = poScreenCenter
+  ShowInTaskBar = True
   OnCreate = FormCreate
   OnDestroy = FormDestroy
+  OnKeyDown = FormKeyDown
+  OnShow = FormShow
   TextHeight = 15
   object SplitterLeft: TSplitter
     Left = 310
@@ -63,7 +68,7 @@ object JamBrowser: TJamBrowser
     TabOrder = 0
     ExplicitWidth = 1192
     object jamLoading: TLabel
-      Left = 1112
+      Left = 894
       Top = 12
       Width = 63
       Height = 15
@@ -113,10 +118,13 @@ object JamBrowser: TJamBrowser
       Header.Options = [hoAutoResize, hoColumnResize, hoDrag, hoShowSortGlyphs]
       Images = SystemImages
       TabOrder = 0
+      TreeOptions.AutoOptions = [toAutoScroll, toAutoScrollOnExpand, toAutoTristateTracking, toAutoHideButtons, toAutoDeleteMovedNodes, toAutoChangeScale]
+      TreeOptions.MiscOptions = [toFullRepaintOnResize, toInitOnSave, toToggleOnDblClick, toWheelPanning]
       TreeOptions.PaintOptions = [toShowButtons, toShowDropmark, toShowRoot, toShowTreeLines, toThemeAware, toUseBlendedImages, toFullVertGridLines, toUseExplorerTheme]
-      OnChange = directoryTreeChange
+      TreeOptions.SelectionOptions = [toExtendedFocus, toFullRowSelect, toCenterScrollIntoView, toSelectNextNodeOnRemoval]
       OnCompareNodes = directoryTreeCompareNodes
       OnDrawNode = directoryTreeDrawNode
+      OnFocusChanged = directoryTreeFocusChanged
       OnFreeNode = directoryTreeFreeNode
       OnGetImageIndex = directoryTreeGetImageIndex
       OnGetNodeWidth = directoryTreeGetNodeWidth
@@ -157,6 +165,7 @@ object JamBrowser: TJamBrowser
       Width = 59
       Height = 15
       Caption = 'File Name: '
+      Visible = False
     end
     object lblJamType: TLabel
       Left = 6
@@ -164,6 +173,7 @@ object JamBrowser: TJamBrowser
       Width = 54
       Height = 15
       Caption = 'JAM Type:'
+      Visible = False
     end
     object lblDimensions: TLabel
       Left = 6
@@ -171,6 +181,7 @@ object JamBrowser: TJamBrowser
       Width = 68
       Height = 15
       Caption = 'Dimensions: '
+      Visible = False
     end
     object lblTexs: TLabel
       Left = 6
@@ -178,6 +189,31 @@ object JamBrowser: TJamBrowser
       Width = 107
       Height = 15
       Caption = 'Number of Textures:'
+      Visible = False
+    end
+    object lblDateCreate: TLabel
+      Left = 6
+      Top = 419
+      Width = 71
+      Height = 15
+      Caption = 'Date Created:'
+      Visible = False
+    end
+    object lblDateModify: TLabel
+      Left = 6
+      Top = 440
+      Width = 78
+      Height = 15
+      Caption = 'Date Modified:'
+      Visible = False
+    end
+    object lblSize: TLabel
+      Left = 6
+      Top = 461
+      Width = 23
+      Height = 15
+      Caption = 'Size:'
+      Visible = False
     end
   end
   object jamListView: TEasyListview
@@ -195,11 +231,23 @@ object JamBrowser: TJamBrowser
     EditManager.Font.Height = -12
     EditManager.Font.Name = 'Segoe UI'
     EditManager.Font.Style = []
+    DragManager.EnableDragImage = False
+    Header.Columns.Tag = 2
     Header.Columns.Items = {
-      0600000001000000110000005445617379436F6C756D6E53746F726564FFFECE
-      000600000080080001010001000000000000015F000000FFFFFF1F0001000000
-      00000000000000000000000000000000}
+      0600000004000000110000005445617379436F6C756D6E53746F726564FFFECE
+      0006000000800C00010101010000000001000181000000FFFFFF1F0001000000
+      01000000040000004E0061006D00650000000000000000000000000011000000
+      5445617379436F6C756D6E53746F726564FFFECE000600000080080001010101
+      0100000000000181000000FFFFFF1F0001000000010000000400000044006100
+      74006500000000000000000000000000110000005445617379436F6C756D6E53
+      746F726564FFFECE000600000080080001010101020000000000015B000000FF
+      FFFF1F00010000000100000004000000530069007A0065000000000000000000
+      00000000110000005445617379436F6C756D6E53746F726564FFFECE00060000
+      00810C00010101010300000000000181000000FFFFFF1F000100000001000000
+      120000004E0075006D0062006500720020006F00660020005400650078007400
+      7500720065007300000000000000000000000000}
     Header.Height = 23
+    Header.Visible = True
     PaintInfoGroup.MarginBottom.CaptionIndent = 4
     PaintInfoItem.CheckFlat = True
     PaintInfoItem.GridLines = True
@@ -208,9 +256,13 @@ object JamBrowser: TJamBrowser
     PaintInfoItem.ImageIndent = 10
     PaintInfoItem.ShowBorder = False
     PaintInfoItem.VAlignment = cvaBottom
+    PopupMenu = PopupMenu1
     ShowThemedBorder = False
+    Sort.Algorithm = esaQuickSort
+    Sort.AutoSort = True
     TabOrder = 3
     View = elsThumbnail
+    OnItemCompare = jamListViewItemCompare
     OnItemDblClick = jamListViewItemDblClick
     OnItemFreeing = jamListViewItemFreeing
     OnItemImageDraw = jamListViewItemImageDraw
@@ -222,5 +274,58 @@ object JamBrowser: TJamBrowser
   object SystemImages: TImageList
     Left = 164
     Top = 316
+  end
+  object PopupMenu1: TPopupMenu
+    OnPopup = PopupMenu1Popup
+    Left = 592
+    Top = 392
+    object View1: TMenuItem
+      Caption = 'View'
+      object thumbnails1: TMenuItem
+        Caption = 'Thumbnails'
+        OnClick = thumbnails1Click
+      end
+      object Details1: TMenuItem
+        Caption = 'Details'
+        OnClick = Details1Click
+      end
+    end
+    object SortBy1: TMenuItem
+      Caption = 'Sort By'
+      object Name1: TMenuItem
+        Caption = 'Name'
+        Checked = True
+        OnClick = Name1Click
+      end
+      object Date1: TMenuItem
+        Caption = 'Date'
+        OnClick = Date1Click
+      end
+      object Size1: TMenuItem
+        Caption = 'Size'
+        OnClick = Size1Click
+      end
+      object NumberofTextures1: TMenuItem
+        Caption = 'Number of Textures'
+        OnClick = NumberofTextures1Click
+      end
+      object N2: TMenuItem
+        Caption = '-'
+      end
+      object Ascending1: TMenuItem
+        Caption = 'Ascending'
+        OnClick = Ascending1Click
+      end
+      object Descending1: TMenuItem
+        Caption = 'Descending'
+        OnClick = Descending1Click
+      end
+    end
+    object N1: TMenuItem
+      Caption = '-'
+    end
+    object AddtoBatch1: TMenuItem
+      Caption = 'Add to Batch Convert'
+    end
   end
 end

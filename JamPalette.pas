@@ -573,6 +573,7 @@ var
 
   GPXPal: array [0 .. 255] of TRGB;
   LocalGpxPal: array [0 .. 255] of TRGB;
+  tmpPal : array[0..255] of TRGB;
 
   HPalettePerLevel: array [0 .. 3] of HPalette;
 
@@ -596,7 +597,9 @@ procedure GaussianBlur(const Src: TBitmap; const Mask: TBoolGrid;
 
 procedure IndexedTo24bit(const SrcIndexed: TBitmap; out Out24: TBitmap);
 
-function CreateGPxPalBMP(Src: TBitmap) : TBitmap;
+function CreateGPxPalBMP(Src: TBitmap) : TBitmap overload;
+
+function CreateGPxPalBMP(Src: TBitmap; matte : TBitmap): TBitmap overload;
 
 function BuildSingleIdxMap(const Bmp: TBitmap): TBitmap;
 
@@ -906,6 +909,86 @@ begin
         RowDst^[x] := Byte(bestIndex);
       end;
     end;
+
+    Result := Dst;
+  except
+    Dst.Free;
+    raise;
+  end;
+end;
+
+
+
+function CreateGPxPalBMP(Src: TBitmap;  matte : TBitmap): TBitmap;
+var
+  x, y, i, bestIndex: Integer;
+  PalR, PalG, PalB: array [0..255] of Byte;
+  Dist, bestDist: Int64;
+  RowSrc,matteRow: PRGBTripleArray;
+  RowDst: PByteArray;
+  dr, dg, db: Integer;
+  mr,mg,mb: integer;
+  Dst: TBitmap;
+  matteBMP : TBitmap;
+begin
+  // Prepare destination
+  Dst := TBitmap.Create;
+
+  try
+    Dst.PixelFormat := pf8bit;
+    Dst.Width := Src.Width;
+    Dst.Height := Src.Height;
+    Dst.Palette := CreateGPxPal;
+
+    // Cache palette RGB
+    for i := 0 to 255 do
+    begin
+     PalR[i] := GPXPal[i].R;
+      PalG[i] := GPXPal[i].G;
+      PalB[i] := GPXPal[i].B;
+    end;
+
+    // Single scanline pass
+    for y := 0 to Src.Height - 1 do
+    begin
+      RowSrc := Src.ScanLine[y];
+      RowDst := Dst.ScanLine[y];
+      matterow := matte.ScanLine[y];
+      for x := 0 to Src.Width - 1 do
+      begin
+        bestDist := High(Int64);
+        bestIndex := 0;
+        dr := RowSrc^[x].rgbtRed;
+        dg := RowSrc^[x].rgbtGreen;
+        db := RowSrc^[x].rgbtBlue;
+
+        for i := 1 to 253 do
+        begin
+          Dist := Int64(dr - PalR[i])*(dr - PalR[i])
+                + Int64(dg - PalG[i])*(dg - PalG[i])
+                + Int64(db - PalB[i])*(db - PalB[i]);
+          if Dist < bestDist then
+          begin
+            bestDist := Dist;
+            bestIndex := i;
+            if bestindex = 255 then bestindex := 39;
+            if bestindex = 254 then bestindex := 0;
+            if bestindex = 0 then bestindex := 195;
+          end;
+        end;
+
+
+
+        if  matterow^[x].rgbtRed = 255 then
+        begin
+        bestIndex := 0;
+        end;
+
+        RowDst^[x] := Byte(bestIndex);
+      end;
+    end;
+
+    //dst := ApplyMatteToImage(dst, matte, RGBFromTRGB(gpxPal[0]));
 
     Result := Dst;
   except
@@ -1628,91 +1711,7 @@ begin
 end;
 
 
-//procedure ProcessQuad(const SrcGrid: TRGBTripleGrid;
-//  var DstGrid: TRGBTripleGrid; X0, Y0, X1, Y1: Integer; Thresh2: Double);
-//var
-//  x, Y: Integer;
-//  SumR, SumG, SumB, cnt: Int64;
-//  avgR, avgG, avgB: Integer;
-//  C: TRGBTriple;
-//  maxDist2: Double;
-//  midX, midY: Integer;
-//begin
-//  // 1) Compute sum & average color of block
-//  SumR := 0;
-//  SumG := 0;
-//  SumB := 0;
-//  cnt := 0;
-//  for Y := Y0 to Y1 do
-//    for x := X0 to X1 do
-//    begin
-//      C := SrcGrid[Y][x];
-//      Inc(SumR, C.rgbtRed);
-//      Inc(SumG, C.rgbtGreen);
-//      Inc(SumB, C.rgbtBlue);
-//      Inc(cnt);
-//    end;
-//  avgR := Round(SumR / cnt);
-//  avgG := Round(SumG / cnt);
-//  avgB := Round(SumB / cnt);
-//
-//  // 2) Find maximum squared distance from this average
-//  maxDist2 := 0.0;
-//  for Y := Y0 to Y1 do
-//  begin
-//    for x := X0 to X1 do
-//    begin
-//      C := SrcGrid[Y][x];
-//      maxDist2 := Max(maxDist2, Sqr(C.rgbtRed - avgR) + Sqr(C.rgbtGreen - avgG)
-//        + Sqr(C.rgbtBlue - avgB));
-//      if maxDist2 > Thresh2 then
-//        Break;
-//    end;
-//    if maxDist2 > Thresh2 then
-//      Break;
-//  end;
-//
-//  if maxDist2 <= Thresh2 then
-//  begin
-//    // 3) Fill block in DstGrid with the average color
-//    C.rgbtRed := avgR;
-//    C.rgbtGreen := avgG;
-//    C.rgbtBlue := avgB;
-//    for Y := Y0 to Y1 do
-//      for x := X0 to X1 do
-//        DstGrid[Y][x] := C;
-//  end
-//  else
-//  begin
-//    // 4) Subdivide, if the block is larger than one pixel
-//    if (X1 > X0) or (Y1 > Y0) then
-//    begin
-//      midX := (X0 + X1) div 2;
-//      midY := (Y0 + Y1) div 2;
-//
-//      // Top‐left
-//      ProcessQuad(SrcGrid, DstGrid, X0, Y0, midX, midY, Thresh2);
-//
-//      // Top‐right
-//      if midX + 1 <= X1 then
-//        ProcessQuad(SrcGrid, DstGrid, midX + 1, Y0, X1, midY, Thresh2);
-//
-//      // Bottom‐left
-//      if midY + 1 <= Y1 then
-//        ProcessQuad(SrcGrid, DstGrid, X0, midY + 1, midX, Y1, Thresh2);
-//
-//      // Bottom‐right
-//      if (midX + 1 <= X1) and (midY + 1 <= Y1) then
-//        ProcessQuad(SrcGrid, DstGrid, midX + 1, midY + 1, X1, Y1, Thresh2);
-//    end
-//    else
-//    begin
-//      // Block is a single pixel: copy it as is
-//      DstGrid[Y0][X0] := SrcGrid[Y0][X0];
-//    end;
-//  end;
-//end;
-//
+
 ///// <summary>
 ///// Simplify a 24-bit bitmap by quadtree splitting. Each block is tested:
 ///// if all pixels in block are within Thresh of the block’s average, fill block
@@ -1851,7 +1850,7 @@ begin
     for j := M to 255 do
       BaseTuples[j] := BaseTuples[M - 1];
 
-    // 4) Precompute PalColors[j, L] = GP3Pal[IdxFromBaseTuple[j][L]]
+    // 4) Precompute PalColors[j, L] = GPxPal[IdxFromBaseTuple[j][L]]
     for j := 0 to 255 do
     begin
       Idx4 := TupleToIndices[BaseTuples[j]];
@@ -2153,64 +2152,76 @@ begin
   end;
 end;
 
-function ApplyMatteToImage(Resized: TBitmap; Matte: TBitmap;
-  const TransparentColor: TColor): TBitmap;
+function ApplyMatteToImage(Resized, Matte: TBitmap; const TransparentColor: TColor): TBitmap;
 var
   X, Y: Integer;
-  ResLine: PRGBTriple;
-  MatteLine: PRGBTriple;
-  Output: TBitmap;
+  ResLine, MatteLine: PRGBTripleArray;
+  OutLine: PRGBTripleArray;
+  tcR, tcG, tcB: Byte;
 begin
-  Output := TBitmap.Create;
-  Output.PixelFormat := pf24bit;
-  Output.SetSize(Resized.Width, Resized.Height);
+  // Pre‐compute transparent color components
+  tcR := GetRValue(TransparentColor);
+  tcG := GetGValue(TransparentColor);
+  tcB := GetBValue(TransparentColor);
 
+  // Create output
+  Result := TBitmap.Create;
+  Result.PixelFormat := pf24bit;
+  Result.SetSize(Resized.Width, Resized.Height);
+
+  // Draw per scanline
   for Y := 0 to Resized.Height - 1 do
   begin
-    ResLine := Resized.ScanLine[Y];
+    ResLine   := Resized.ScanLine[Y];
     MatteLine := Matte.ScanLine[Y];
+    OutLine   := Result.ScanLine[Y];
     for X := 0 to Resized.Width - 1 do
     begin
-      if (MatteLine^.rgbtRed > 127) then
+      if MatteLine^[X].rgbtRed > 127 then
       begin
-        // Transparent
-        Output.Canvas.Pixels[X, Y] := TransparentColor;
+        // Transparent pixel
+        OutLine^[X].rgbtRed   := tcR;
+        OutLine^[X].rgbtGreen := tcG;
+        OutLine^[X].rgbtBlue  := tcB;
       end
       else
       begin
-        // Opaque
-        Output.Canvas.Pixels[X, Y] :=
-          RGB(ResLine^.rgbtRed, ResLine^.rgbtGreen, ResLine^.rgbtBlue);
+        // Opaque pixel from resized image
+        OutLine^[X] := ResLine^[X];
       end;
-      Inc(ResLine);
-      Inc(MatteLine);
     end;
   end;
-
-  Result := Output;
 end;
+
 
 function resizeTransProtection(Source: TBitmap;
   NewWidth, NewHeight: Integer; const TransparentColor: TColor): TBitmap;
 var
   Matte, ResizedImg, ResizedMatte: TBitmap;
 begin
-
+  // 1) Build transparency matte
+  Matte := CreateTransparencyMatte(Source);
   try
-    // Step 1: Create matte
-    Matte := CreateTransparencyMatte(Source);
-
-    // Step 2: Resize both
+    // 2) Resize source and matte
     ResizedImg := StretchF(Source, NewWidth, NewHeight);
-    ResizedMatte := StretchF(Matte, NewWidth, NewHeight);
-
-    // Step 3: Composite
-    Result := ApplyMatteToImage(ResizedImg, ResizedMatte, TransparentColor);
+    try
+      ResizedMatte := StretchF(Matte, NewWidth, NewHeight);
+      try
+        // 3) Composite → this returns a *new* TBitmap we hand back
+        Result := ApplyMatteToImage(ResizedImg, ResizedMatte, TransparentColor);
+      finally
+        // Free only the *resized* matte
+        ResizedMatte.Free;
+      end;
+    finally
+      // Free only the *resized* image
+      ResizedImg.Free;
+    end;
   finally
-//    Matte.Free;
-//    ResizedImg.Free;
-//    ResizedMatte.Free;
+    // Free the original matte
+    Matte.Free;
   end;
+
 end;
 
 
@@ -2220,6 +2231,7 @@ var
   bmp: TBitmap;
 begin
   bmp := TBitmap.Create;
+  bmp.canvas.lock;
   bmp.SetSize(width, height);
   bmp.PixelFormat := pf24bit;
 
@@ -2234,6 +2246,7 @@ begin
       Inc(idx);
     end;
 
+  bmp.canvas.unlock;
   Result := bmp;
 end;
 

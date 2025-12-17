@@ -1,28 +1,88 @@
-unit JamGeneral;
+﻿unit JamGeneral;
 
 interface
 
 uses
-  System.SysUtils, System.Classes, System.Types, System.Generics.Collections,
-  System.IOUtils, System.Math,
-
-  Winapi.Windows, Vcl.Graphics;
+  System.SysUtils,  System.StrUtils, System.Classes,  System.IOUtils, System.Math,
+  Winapi.Windows, Vcl.Graphics,  System.Generics.Collections;
 
 const
   JAM_HW_MAGIC     = $0098967F; //Magic number to identify it's a HW JAM
 
+  CLIPBOARD_JAM  = 'JamTexClipboard';
+  CLIPBOARD_HWJAM  = 'JamHWTexClipboard';
+
   TCol_TransGP2 = $007FAB97; // RGB(151,171,127)
   TCol_TransGP3 = $0067673F; // RGB(63,103,103)
-  TCol_TransGP3HW = $00F8FC00; // RGB(0,252,248)
+  TCol_TransGP3HW = $00FFFF00; // RGB(0,255,255)
 
   TransparentColors: array [0 .. 2] of TColor = (TCol_TransGP2, TCol_TransGP3,
     TCol_TransGP3HW);
 
+  baseKeyPath = '\Software\JKVFX\JamEditor\';
+  MRUKeyPath = baseKeyPath + 'RecentFiles';
+
   dx: array [0 .. 3] of Integer = (1, -1, 0, 0);
   dy: array [0 .. 3] of Integer = (0, 0, 1, -1);
 
+type
+  THWJamHeader = packed record
+    NumItems: Word;
+    JamTotalHeight: Word;
+  end;
+
+
+  THWJamEntryInfo = record
+    PosRaw:         Integer;            // raw dword from words[0]+[1]<<16
+    X, Y:           Integer;            // decoded Left/Top
+    Width, Height:  Word;               // words[2], words[3]
+    JamID:          Word;               // words[5]
+    FrameCountExp:  Word;               // words[6]
+    NumFrames:      Integer;            // = 1 shl FrameCountExp
+    jamflags:       Word;               // words[10]
+    FrameFlags:     array[0..15] of Boolean; // unpacked bits
+  end;
+
+TJamHeader = packed record
+    NumItems: Word;
+    JamTotalHeight: Word;
+  end;
+
+  TJamEntryInfo = packed record
+    X: Byte;
+    Y: Word;
+    Unk: Byte; // totally unk?
+    Width: Word;
+    Height: Word;
+    scaleX: byte;
+    scaleY: byte;
+    scaleFlag: byte;
+    scaleFactor: byte;
+//    Idx08: Word; // scale origin x & y?
+//    Idx0A: Word; // scaling flags & factor?
+    ImagePtr: Word;
+    Idx0E: Word; // totally unk
+    PaletteSizeDiv4: Word;
+    JamId: Word;
+    JamFlags: Word; // flags
+    Idx16: Byte; // untex color 1; entry in palette
+    Idx17: Byte; // untext color 2; entry in palette
+    Idx18: array [0 .. 7] of Byte;
+    // 3,4 and 6 seem to be used in car liveries (gp3)... maybe load up all JAM files and create CSVs with all the data to review??
+  end;
+
+
+
+type
+  TJamType = (jamGP2, jamGP3SW, jamGP3HW);
+
+
 
 var
+ ClipboardJAM : uint;
+ ClipboardhwJAM : uint;
+
+ SelectedTextureList: TList<integer>;
   rcrJAMList: array [0 .. 18] of string = (
     'rcr1a',
 
@@ -88,11 +148,13 @@ var
   boolGP3Jam : boolean;
   boolHWJAM: boolean;
 
+  boolBrowsePal : boolean;
+
   booljamLoaded: boolean;
 
   generatePal : boolean;
 
-  boolmodified: boolean;
+  boolJamModified: boolean;
 
   intJamZoom: double;
 
@@ -112,6 +174,21 @@ var
 
   intPaletteID: integer;
 
+  boolRCRDrawMode : boolean;
+
+  strImportPath : string;
+  strExportPath : string;
+  strOpenPath : string;
+  strSavePath : string;
+
+  strGP2Location : string;
+  strGP3Location : string;
+
+  strBrowserPath :string;
+
+  intMaxMRU : integer;
+
+  jamType : TJamType;
 
 function CheckIfRCR(const S: string): integer;
 function CreateTransparencyMatte(const Bmp: TBitmap): TBitmap;
@@ -125,10 +202,20 @@ function PackRGB565(Color: TColor): Word;
 
 function isHWJAM(const Filename : string) : boolean;
 
-function UnPackFlag(data: word; flagNum: integer): boolean;
+function UnPackFlag(data: word; flagNum: integer): boolean overload;
+
+function FlagToInt(bool : boolean) : integer;
+
 function PackFlag(data: word; flagNum: integer): word;
 
+function ToggleGP3JamsFolder(const APath: string): string;
+
+function ExtractColumns8Bit(const Source: TBitmap; ReadOdd: Boolean): TBitmap;
+
 implementation
+
+
+
 
 function DrawTextureOutlines(jamCanvas : TBitmap; x : integer; y : integer; width : integer; height : integer; i : integer; jamID : integer) : TBitmap;
 var
@@ -136,10 +223,12 @@ var
   idText: string;
   rectX, rectY: Integer;
   textRect: TRect;
-  w, h : integer;
+  w, h, j : integer;
 begin
   if not boolDrawOutlines then
     exit(JamCanvas);
+
+  jamcanvas.Canvas.lock;
 
   JamCanvas.Canvas.Pen.Style := psSolid;
   JamCanvas.Canvas.Pen.Width := 1;
@@ -151,11 +240,14 @@ begin
   x := round(x * intJamZoom);
 
 
+    JamCanvas.Canvas.Pen.color := clInactiveBorder;
     // Set pen color for outlines
-    if i = intSelectedTexture then
-      JamCanvas.Canvas.Pen.color := clHighlight
-    else
-      JamCanvas.Canvas.Pen.color := clInactiveBorder;
+    for j in selectedTextureList do
+    begin
+    if j = i then
+      JamCanvas.Canvas.Pen.color := clHighlight;
+    end;
+
 
     JamCanvas.Canvas.Rectangle(X, Y, X + W, Y + H);
 
@@ -177,11 +269,15 @@ begin
 
     // Draw filled rectangle with black border
     JamCanvas.Canvas.Brush.Style := bsSolid;
+    JamCanvas.Canvas.Brush.color := clInactiveBorder;
 
-    if i = intSelectedTexture then
-      JamCanvas.Canvas.Brush.color := clHighlight
-    else
-      JamCanvas.Canvas.Brush.color := clInactiveBorder;
+    for j in selectedTextureList do
+    begin
+    if j =i then
+
+       JamCanvas.Canvas.Brush.color := clHighlight
+    end;
+
 
     JamCanvas.Canvas.Pen.color := clBlack;
     JamCanvas.Canvas.Rectangle(textRect);
@@ -191,6 +287,8 @@ begin
     JamCanvas.Canvas.Brush.Style := bsClear; // Transparent for text
 
     JamCanvas.Canvas.TextOut(rectX + 6, rectY + 1, idText);
+
+    jamcanvas.Canvas.Unlock;
 
   Result := JamCanvas;
 
@@ -414,12 +512,96 @@ end;
 
 function UnPackFlag(data: word; flagNum: integer): boolean;
 begin
- result := data and (1 shl flagNum) <> 0;
+ result := (data and (1 shl flagNum)) <> 0;
+end;
+
+function FlagToInt(bool : boolean) : integer;
+begin
+  if bool then
+  result := 1
+  else
+  result := 0;
 end;
 
 function PackFlag(data: word; flagNum: integer): word;
 begin
  result := data or (1 shl flagNum);
+end;
+
+function ToggleGP3JamsFolder(const APath: string): string;
+const
+  Old1 = 'GP3JAMSH';
+  Old2 = 'GP3JAMS';
+begin
+  // first look for the longer “H” variant
+  if ContainsText(APath, Old1) then
+    Result := StringReplace(
+      APath,
+      Old1,
+      Old2,
+      [rfReplaceAll, rfIgnoreCase]
+    )
+  // else, if it has the non‑H variant, add the H
+  else if ContainsText(APath, Old2) then
+    Result := StringReplace(
+      APath,
+      Old2,
+      Old1,
+      [rfReplaceAll, rfIgnoreCase]
+    )
+  else
+    Result := APath;
+end;
+
+function ExtractColumns8Bit(const Source: TBitmap; ReadOdd: Boolean): TBitmap;
+var
+  StartX, NewWidth, Y, SrcX, DstX: Integer;
+  SrcLine, DstLine: PByteArray;
+begin
+  if not Assigned(Source) then
+    raise Exception.Create('ExtractColumns8Bit: Source bitmap is nil');
+
+  // Ensure source is 8‑bit
+  if Source.PixelFormat <> pf8bit then
+    Source.PixelFormat := pf8bit;
+
+  // Decide start column (0 for even, 1 for odd)
+  if ReadOdd then
+    StartX := 1
+  else
+    StartX := 0;
+
+  // Compute how many columns we'll pull out:
+  //  even (StartX=0): (W+1) div 2
+  //  odd  (StartX=1): W div 2
+  if ReadOdd then
+    NewWidth := Source.Width div 2
+  else
+    NewWidth := (Source.Width + 1) div 2;
+
+  // Create result bitmap
+  Result := TBitmap.Create;
+  Result.PixelFormat := pf8bit;
+  Result.Width  := NewWidth;
+  Result.Height := Source.Height;
+
+  // Copy palette so the byte values map the same colours
+  Result.Palette := CopyPalette(Source.Palette);
+
+  // Copy each scan‑line, picking every 2nd byte
+  for Y := 0 to Source.Height - 1 do
+  begin
+    SrcLine := Source.ScanLine[Y];
+    DstLine := Result.ScanLine[Y];
+    DstX := 0;
+    SrcX := StartX;
+    while SrcX < Source.Width do
+    begin
+      DstLine[DstX] := SrcLine[SrcX];
+      Inc(DstX);
+      Inc(SrcX, 2);
+    end;
+  end;
 end;
 
 end.
