@@ -9,3 +9,7 @@ Main features are batch conversions and generating of 'proper palettes' for SW J
 Some support for RCR jam viewing which is interesting. There is also a Jam browser.
 
 Enjoy!
+
+Thanks to:
+
+Trevor Kellaway, Paul Hoad, Mal Ross, John Verheijen, René Smit
