@@ -74,6 +74,8 @@ type
     Label6: TLabel;
     edtFilename: TEdit;
     chkScanAllFolders: TCheckBox;
+    btnConvertTrack: TButton;
+    openTrack: TOpenDialog;
     procedure btnAddFileClick(Sender: TObject);
     procedure btnScanFolderClick(Sender: TObject);
     procedure btnDelClick(Sender: TObject);
@@ -100,10 +102,11 @@ type
     procedure btnBrowseOutputClick(Sender: TObject);
     procedure edtFilenameChange(Sender: TObject);
     procedure DeleteItems1Click(Sender: TObject);
+    procedure btnConvertTrackClick(Sender: TObject);
 
   private
+    // FDat: TGP3Track;
     procedure RefreshListView;
-
     procedure ConvertJam();
     procedure UpdateListViewItem(li: TListItem);
     procedure RefreshSelectedItems;
@@ -121,7 +124,7 @@ var
   BatchList: TObjectList<TJamBatchItem>;
   tempDir: string;
   updateDir: boolean;
-  tmpArr : TArray<TJamBatchItem>;
+  tmpArr: TArray<TJamBatchItem>;
 
 procedure InitBatchList;
 procedure FreeBatchList;
@@ -222,12 +225,11 @@ begin
 
         itm.filename := ExtractFileName(fn);
 
-
         dironly := extractfilepath(fn);
 
         if (itm.outputType = jamGP3SW) or (itm.outputType = jamGP3HW) then
           itm.outputpath := ToggleGP3JamsFolder(dironly)
-          else
+        else
           itm.outputpath := dironly;
 
         BatchList.Add(itm);
@@ -252,7 +254,7 @@ begin
     dlg.Title := 'Select output folder';
     if dlg.Execute then
     begin
-      tempDir := dlg.FileName; // actually the folder
+      tempDir := dlg.filename; // actually the folder
       edtOutputPath.Text := tempDir;
       edtOutputPath.SetFocus;
       updateDir := True;
@@ -278,7 +280,7 @@ begin
         for i := 0 to lvBatch.Items.Count - 1 do
           if lvBatch.Items[i].Selected then
             idxs.Add(i);
-            idxs.Sort;
+        idxs.Sort;
         // remove highest to lowest
         for i := idxs.Count - 1 downto 0 do
           BatchList.Delete(idxs[i]);
@@ -303,13 +305,13 @@ begin
     dlg.Title := 'Select folder to scan for JAMs';
     if dlg.Execute then
     begin
-      Dir := dlg.FileName; // actually the folder
+      Dir := dlg.filename; // actually the folder
       if chkScanAllFolders.Checked then
-       Files := TDirectory.GetFiles(Dir, '*.jam',
-        TSearchOption.soAllDirectories)
+        Files := TDirectory.GetFiles(Dir, '*.jam',
+          TSearchOption.soAllDirectories)
       else
-      Files := TDirectory.GetFiles(Dir, '*.jam',
-        TSearchOption.soTopDirectoryOnly);
+        Files := TDirectory.GetFiles(Dir, '*.jam',
+          TSearchOption.soTopDirectoryOnly);
       for f in Files do
       begin
         if ItemExists(f) then
@@ -337,6 +339,20 @@ begin
   finally
     dlg.Free;
   end;
+end;
+
+procedure TJamBatchForm.btnConvertTrackClick(Sender: TObject);
+begin
+  // if OpenTrack.Execute then
+  // begin
+  // try
+  // FDat.LoadFromFile(OpenTrack.FileName);
+  // LoadJamListToUI;
+  // except
+  // on E: Exception do
+  // MessageDlg('Failed to open file: ' + E.Message, mtError, [mbOK], 0);
+  // end;
+  // end;
 end;
 
 procedure TJamBatchForm.cbSimplifyChange(Sender: TObject);
@@ -417,214 +433,217 @@ begin
     btnDel.Enabled := False;
 end;
 
-
-
-procedure TJamBatchForm.ConvertJAM();
+procedure TJamBatchForm.ConvertJam();
 var
   i, j: integer;
 begin
 
   tmpArr := BatchList.ToArray;
 
-//
- TTask.run(procedure
-  var
-    i,x: integer; ThisItem: TJamBatchItem;
-  FJamFile, FOldJamFile: TJamFile;
-  FHWJamFile: THWJamFile;
-  begin
-  for i := 0 to High(tmpArr) do
-  begin
-    ThisItem := tmpArr[i]; // <-- capture per-iteration
-
-    checkPath(thisitem.outputpath);
-
-    if ThisItem.inputType = jamGP3HW then
+  //
+  TTask.run(
+    procedure
+    var
+      i, x: integer;
+      ThisItem: TJamBatchItem;
+      FJamFile, FOldJamFile: TJamFile;
+      FHWJamFile: THWJamFile;
     begin
-      if ThisItem.outputType = jamGP3SW then
+      for i := 0 to High(tmpArr) do
       begin
-        FJamFile := TJamFile.Create;
-        FHWJamFile := THWJamFile.Create;
+        ThisItem := tmpArr[i]; // <-- capture per-iteration
 
-        FHWJamFile.LoadFromFile(ThisItem.filepath);
+        checkPath(ThisItem.outputpath);
 
-        FJamFile.ConvertHWJam(FHWJamFile, False);
+        if ThisItem.inputType = jamGP3HW then
+        begin
+          if ThisItem.outputType = jamGP3SW then
+          begin
+            FJamFile := TJamFile.Create;
+            FHWJamFile := THWJamFile.Create;
 
-        FJamFile.SaveToFile(ThisItem.outputpath);
+            FHWJamFile.LoadFromFile(ThisItem.filepath);
 
-        FJamFile.Free;
-        FHWJamFile.Free;
+            FJamFile.ConvertHWJam(FHWJamFile, False);
+
+            FJamFile.SaveToFile(ThisItem.outputpath);
+
+            FJamFile.Free;
+            FHWJamFile.Free;
+          end;
+
+          if ThisItem.outputType = jamGP2 then
+          begin
+            FJamFile := TJamFile.Create;
+            FHWJamFile := THWJamFile.Create;
+
+            FHWJamFile.LoadFromFile(ThisItem.filepath);
+
+            FJamFile.ConvertHWJam(FHWJamFile, True);
+
+            FJamFile.SaveToFile(ThisItem.outputpath);
+
+            FJamFile.Free;
+            FHWJamFile.Free;
+          end;
+        end;
+
+        if ThisItem.inputType = jamGP2 then
+        begin
+          if ThisItem.outputType = jamGP3SW then
+          begin
+            FJamFile := TJamFile.Create;
+            FOldJamFile := TJamFile.Create;
+
+            FOldJamFile.LoadFromFile(ThisItem.filepath, False);
+
+            FJamFile.ConvertGpxJam(FOldJamFile, False);
+
+            if chkDoPalette.Checked then
+              for x := 0 to FJamFile.FEntries.Count - 1 do
+                FJamFile.ZeroPalette(x);
+
+            FJamFile.SaveToFile(ThisItem.outputpath);
+
+            FJamFile.Free;
+            FOldJamFile.Free;
+          end;
+
+          if ThisItem.outputType = jamGP2 then
+          begin
+            FJamFile := TJamFile.Create;
+            FOldJamFile := TJamFile.Create;
+
+            FOldJamFile.LoadFromFile(ThisItem.filepath, False);
+
+            FJamFile.ConvertGpxJam(FOldJamFile, True);
+
+            if chkDoPalette.Checked then
+              for x := 0 to FJamFile.FEntries.Count - 1 do
+                FJamFile.ZeroPalette(x);
+
+            FJamFile.SaveToFile(ThisItem.outputpath);
+
+            FJamFile.Free;
+            FOldJamFile.Free;
+          end;
+
+          if ThisItem.outputType = jamGP3HW then
+          begin
+            FHWJamFile := THWJamFile.Create;
+            FHWJamFile.ConvertGpxJam(ThisItem.filepath);
+            FHWJamFile.SaveToFile(ThisItem.outputpath);
+            FHWJamFile.Free;
+          end;
+
+        end;
+
+        if ThisItem.inputType = jamGP3SW then
+        begin
+          if ThisItem.outputType = jamGP3SW then
+          begin
+            FJamFile := TJamFile.Create;
+            FOldJamFile := TJamFile.Create;
+
+            FOldJamFile.LoadFromFile(ThisItem.filepath, False);
+
+            FJamFile.ConvertGpxJam(FOldJamFile, False);
+
+            if chkDoPalette.Checked then
+              for x := 0 to FJamFile.FEntries.Count - 1 do
+                FJamFile.ZeroPalette(x);
+
+            FJamFile.SaveToFile(ThisItem.outputpath);
+
+            FJamFile.Free;
+            FOldJamFile.Free;
+          end;
+
+          if ThisItem.outputType = jamGP2 then
+          begin
+            FJamFile := TJamFile.Create;
+            FOldJamFile := TJamFile.Create;
+
+            FOldJamFile.LoadFromFile(ThisItem.filepath, False);
+
+            FJamFile.ConvertGpxJam(FOldJamFile, True);
+
+            if chkDoPalette.Checked then
+              for x := 0 to FJamFile.FEntries.Count - 1 do
+                FJamFile.ZeroPalette(x);
+
+            FJamFile.SaveToFile(ThisItem.outputpath);
+
+            FJamFile.Free;
+            FOldJamFile.Free;
+          end;
+
+          if ThisItem.outputType = jamGP3HW then
+          begin
+            FHWJamFile := THWJamFile.Create;
+            FHWJamFile.ConvertGpxJam(ThisItem.filepath);
+            FHWJamFile.SaveToFile(ThisItem.outputpath);
+            FHWJamFile.Free;
+          end;
+
+        end;
+        ThisItem.processed := True;
+        OnItemProcessed(ThisItem);
       end;
-
-      if ThisItem.outputType = jamGP2 then
-      begin
-        FJamFile := TJamFile.Create;
-        FHWJamFile := THWJamFile.Create;
-
-        FHWJamFile.LoadFromFile(ThisItem.filepath);
-
-        FJamFile.ConvertHWJam(FHWJamFile, True);
-
-        FJamFile.SaveToFile(ThisItem.outputpath);
-
-        FJamFile.Free;
-        FHWJamFile.Free;
-      end;
-    end;
-
-  if ThisItem.inputType = jamGP2 then
-    begin
-      if ThisItem.outputType = jamGP3SW then
-      begin
-        FJamFile := TJamFile.Create;
-        FOldJamFile := TJamFile.Create;
-
-        FOldJamFile.LoadFromFile(ThisItem.filepath, False);
-
-        FJamFile.ConvertGpxJam(FOldJamFile, False);
-
-        if chkdopalette.checked then
-        for x := 0 to FJamfile.FEntries.count-1 do
-        fjamfile.ZeroPalette(x);
-
-        FJamFile.SaveToFile(ThisItem.outputpath);
-
-        FJamFile.Free;
-        FOldJamFile.Free;
-      end;
-
-      if ThisItem.outputType = jamGP2 then
-      begin
-        FJamFile := TJamFile.Create;
-        FOldJamFile := TJamFile.Create;
-
-        FOldJamFile.LoadFromFile(ThisItem.filepath, False);
-
-        FJamFile.ConvertGpxJam(FOldJamFile, True);
-
-        if chkdopalette.checked then
-        for x := 0 to FJamfile.FEntries.count-1 do
-        fjamfile.ZeroPalette(x);
-
-        FJamFile.SaveToFile(ThisItem.outputpath);
-
-        FJamFile.Free;
-        FOldJamFile.Free;
-      end;
-
-      if thisItem.outputType = jamGP3HW then
-      begin
-        FHWJamFIle := THWJamFile.Create;
-        FHWJamfile.ConvertGPxJam(thisitem.filepath);
-        FHWJamfile.SaveToFile(thisitem.outputpath);
-        FHWJamFile.free;
-      end;
-
-    end;
-
-     if ThisItem.inputType = jamGP3SW then
-    begin
-      if ThisItem.outputType = jamGP3SW then
-      begin
-        FJamFile := TJamFile.Create;
-        FOldJamFile := TJamFile.Create;
-
-        FOldJamFile.LoadFromFile(ThisItem.filepath, False);
-
-        FJamFile.ConvertGpxJam(FOldJamFile, False);
-
-        if chkdopalette.checked then
-        for x := 0 to FJamfile.FEntries.count-1 do
-        fjamfile.ZeroPalette(x);
-
-        FJamFile.SaveToFile(ThisItem.outputpath);
-
-        FJamFile.Free;
-        FOldJamFile.Free;
-      end;
-
-      if ThisItem.outputType = jamGP2 then
-      begin
-        FJamFile := TJamFile.Create;
-        FOldJamFile := TJamFile.Create;
-
-        FOldJamFile.LoadFromFile(ThisItem.filepath, False);
-
-        FJamFile.ConvertGpxJam(FOldJamFile, True);
-
-        if chkdopalette.checked then
-        for x := 0 to FJamfile.FEntries.count-1 do
-        fjamfile.ZeroPalette(x);
-
-        FJamFile.SaveToFile(ThisItem.outputpath);
-
-        FJamFile.Free;
-        FOldJamFile.Free;
-      end;
-
-      if thisItem.outputType = jamGP3HW then
-      begin
-        FHWJamFIle := THWJamFile.Create;
-        FHWJamfile.ConvertGPxJam(thisitem.filepath);
-        FHWJamfile.SaveToFile(thisitem.outputpath);
-        FHWJamFile.free;
-      end;
-
-    end;
-    ThisItem.processed := True;
-    OnItemProcessed(thisitem);
-    end;
-     end);
-
-
+    end);
 
 end;
 
 procedure TJamBatchForm.DeleteItems1Click(Sender: TObject);
 begin
-btnDelClick(sender);
+  btnDelClick(Sender);
 end;
 
 procedure TJamBatchForm.edtFilenameChange(Sender: TObject);
 begin
 
-if lvbatch.SelCount > 1 then exit;
+  if lvBatch.SelCount > 1 then
+    Exit;
 
   ApplyDetailsToItems(GetSelectedBatchItems);
 end;
 
 procedure TJamBatchForm.btnRunClick(Sender: TObject);
 begin
-TTask.run(procedure begin convertjam; end);
+  TTask.run(
+    procedure
+    begin
+      ConvertJam;
+    end);
 end;
 
 procedure TJamBatchForm.radioGP2Click(Sender: TObject);
 begin
-  radioGP3.checked := False;
-  radioGP3HW.checked := False;
+  radioGP3.Checked := False;
+  radioGP3HW.Checked := False;
   ApplyDetailsToItems(GetSelectedBatchItems);
 end;
 
 procedure TJamBatchForm.radioGP3Click(Sender: TObject);
 begin
-  radioGP2.checked := False;
-  radioGP3HW.checked := False;
+  radioGP2.Checked := False;
+  radioGP3HW.Checked := False;
   ApplyDetailsToItems(GetSelectedBatchItems);
 
 end;
 
 procedure TJamBatchForm.radioGP3HWClick(Sender: TObject);
 begin
-  radioGP2.checked := False;
-  radioGP3.checked := False;
+  radioGP2.Checked := False;
+  radioGP3.Checked := False;
   ApplyDetailsToItems(GetSelectedBatchItems);
 end;
 
 procedure TJamBatchForm.OnItemProcessed(Item: TJamBatchItem);
 begin
 
-   BatchList.Remove(Item);
-   RefreshListView;
+  BatchList.Remove(Item);
+  RefreshListView;
 end;
 
 function TJamBatchForm.GetJamType(jamType: TJamType): string;
@@ -755,7 +774,7 @@ begin
   begin
     edtOutputPath.Text := jamItem.outputpath;
     strJamFile.Text := jamItem.filepath;
-    edtfilename.text := jamItem.filename;
+    edtFilename.Text := jamItem.filename;
   end
   else
     edtOutputPath.Text := '';
@@ -765,11 +784,11 @@ begin
   begin
     x := Ord(jamItem.outputType);
     if x = 0 then
-      radioGP2.checked := True;
+      radioGP2.Checked := True;
     if x = 1 then
-      radioGP3.checked := True;
+      radioGP3.Checked := True;
     if x = 2 then
-      radioGP3HW.checked := True;
+      radioGP3HW.Checked := True;
   end;
 
   // texture options...
@@ -778,10 +797,10 @@ begin
     cbSimplify.ItemIndex := Ord(jamItem.TextureOptions.Simplify);
     seBlur.Value := jamItem.TextureOptions.Blur;
     seThreshold.Value := Round(jamItem.TextureOptions.simplifyThresh);
-    chkDoPalette.checked := jamItem.TextureOptions.doPals;
-    chkDoMatte.checked := jamItem.TextureOptions.doSoftenMatte;
-    chkSimpPalette.checked := jamItem.TextureOptions.doSimplePal;
-    chkDoPalette.checked := jamItem.TextureOptions.doPals;
+    chkDoPalette.Checked := jamItem.TextureOptions.doPals;
+    chkDoMatte.Checked := jamItem.TextureOptions.doSoftenMatte;
+    chkSimpPalette.Checked := jamItem.TextureOptions.doSimplePal;
+    chkDoPalette.Checked := jamItem.TextureOptions.doPals;
 
   end
   else
@@ -789,12 +808,12 @@ begin
     cbSimplify.ItemIndex := -1;
     seBlur.Value := 0;
     seThreshold.Value := 0;
-    chkDoPalette.checked := False;
-    chkDoMatte.checked := False;
-    chkSimpPalette.checked := False;
-      edtfilename.text := '';
-      edtOutputPath.text := '';
-      strjamfile.text := '';
+    chkDoPalette.Checked := False;
+    chkDoMatte.Checked := False;
+    chkSimpPalette.Checked := False;
+    edtFilename.Text := '';
+    edtOutputPath.Text := '';
+    strJamFile.Text := '';
   end;
 end;
 
@@ -807,41 +826,42 @@ begin
   for jamItem in Items do
   begin
     if edtOutputPath.Focused then
-     if lvbatch.SelCount > 1 then
-     jamItem.outputpath := edtOutputPath.Text
-     else
-      jamItem.outputpath := edtOutputPath.Text;
+      if lvBatch.SelCount > 1 then
+        jamItem.outputpath := edtOutputPath.Text
+      else
+        jamItem.outputpath := edtOutputPath.Text;
 
-     if edtfilename.Focused then
-     if lvbatch.SelCount > 1 then
-     jamItem.filename := edtfilename.Text
-     else
-      jamItem.filename := edtfilename.Text;
+    if edtFilename.Focused then
+      if lvBatch.SelCount > 1 then
+        jamItem.filename := edtFilename.Text
+      else
+        jamItem.filename := edtFilename.Text;
 
     if radioGP2.Focused then
-      if radioGP2.checked then
+      if radioGP2.Checked then
         jamItem.outputType := jamGP2;
 
     if radioGP3.Focused then
-      if radioGP3.checked then
+      if radioGP3.Checked then
         jamItem.outputType := jamGP3SW;
 
     if radioGP3HW.Focused then
-      if radioGP3HW.checked then
+      if radioGP3HW.Checked then
         jamItem.outputType := jamGP3HW;
 
     if cbSimplify.Focused then
-      jamItem.TextureOptions.Simplify := TTextureSimpOptions(cbSimplify.ItemIndex);
+      jamItem.TextureOptions.Simplify :=
+        TTextureSimpOptions(cbSimplify.ItemIndex);
     if seBlur.Focused then
       jamItem.TextureOptions.Blur := Round(seBlur.Value);
     if seThreshold.Focused then
       jamItem.TextureOptions.simplifyThresh := Round(seThreshold.Value);
     if chkDoPalette.Focused then
-      jamItem.TextureOptions.doPals := chkDoPalette.checked;
+      jamItem.TextureOptions.doPals := chkDoPalette.Checked;
     if chkDoMatte.Focused then
-      jamItem.TextureOptions.doSoftenMatte := chkDoMatte.checked;
+      jamItem.TextureOptions.doSoftenMatte := chkDoMatte.Checked;
     if chkSimpPalette.Focused then
-      jamItem.TextureOptions.doSimplePal := chkSimpPalette.checked;
+      jamItem.TextureOptions.doSimplePal := chkSimpPalette.Checked;
   end;
   RefreshSelectedItems;
 

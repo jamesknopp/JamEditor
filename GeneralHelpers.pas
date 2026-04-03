@@ -4,7 +4,8 @@ interface
 
 uses
   Winapi.Windows, System.SysUtils,
-  System.Classes, Vcl.Graphics, ShlWapi,    // for ExtractFilePath (or ExtractFileDir)
+  System.Classes, Vcl.Graphics, ShlWapi,
+  // for ExtractFilePath (or ExtractFileDir)
   System.IOUtils;
 
 function ClampInt(const Value, MinValue, MaxValue: Integer): Integer;
@@ -15,7 +16,7 @@ function StretchF(const BMP: TBitmap; OutWidth, OutHeight: Integer): TBitmap;
 
 function BoolToInt(B: Boolean): Integer;
 
-function IntToBol(i: integer): boolean;
+function IntToBol(i: Integer): Boolean;
 
 function IsPowerOfTwo(Value: Integer): Boolean;
 
@@ -48,14 +49,13 @@ begin
     Sqr(A.rgbtBlue - B.rgbtBlue);
 end;
 
-
 function StretchF(const BMP: TBitmap; OutWidth, OutHeight: Integer): TBitmap;
 var
   DestRect: TRect;
 begin
   Result := TBitmap.Create;
   try
-   // If source and destination sizes are identical, just copy
+    // If source and destination sizes are identical, just copy
     if (BMP.Width = OutWidth) and (BMP.Height = OutHeight) then
     begin
       Result.Assign(BMP);
@@ -78,15 +78,9 @@ begin
       // higher-quality halftone stretch for larger bitmaps
       SetStretchBltMode(Result.Canvas.Handle, HALFTONE);
       SetBrushOrgEx(Result.Canvas.Handle, 0, 0, nil);
-      StretchBlt(
-        Result.Canvas.Handle,
-        DestRect.Left, DestRect.Top,
-        DestRect.Width, DestRect.Height,
-        BMP.Canvas.Handle,
-        0, 0,
-        BMP.Width, BMP.Height,
-        SRCCOPY
-      );
+      StretchBlt(Result.Canvas.Handle, DestRect.Left, DestRect.Top,
+        DestRect.Width, DestRect.Height, BMP.Canvas.Handle, 0, 0, BMP.Width,
+        BMP.Height, SRCCOPY);
     end;
 
   except
@@ -94,7 +88,6 @@ begin
     raise;
   end;
 end;
-
 
 function BoolToInt(B: Boolean): Integer;
 begin
@@ -104,18 +97,17 @@ begin
     Result := 0;
 end;
 
-function IntToBol(i: integer): boolean;
+function IntToBol(i: Integer): Boolean;
 begin
   if i = 1 then
-  result := true
+    Result := true
   else
-  result := false;
+    Result := false;
 end;
-
 
 function WinShortPath(const APath: string; MaxLen: UINT): string;
 var
-  buf: array[0..MAX_PATH] of Char;
+  buf: array [0 .. MAX_PATH] of Char;
 begin
   if PathCompactPathEx(buf, PChar(APath), MaxLen, 0) then
     Result := buf

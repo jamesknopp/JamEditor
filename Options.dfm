@@ -3,7 +3,7 @@ object optionsForm: ToptionsForm
   Top = 0
   BorderStyle = bsDialog
   Caption = 'Options'
-  ClientHeight = 441
+  ClientHeight = 387
   ClientWidth = 542
   Color = clBtnFace
   Font.Charset = DEFAULT_CHARSET
@@ -18,59 +18,82 @@ object optionsForm: ToptionsForm
     Left = 8
     Top = 8
     Width = 529
-    Height = 97
+    Height = 161
     Caption = 'Locations'
     TabOrder = 0
     object Label1: TLabel
-      Left = 16
-      Top = 27
+      Left = 10
+      Top = 35
       Width = 73
       Height = 15
       Caption = 'GP2 Location:'
     end
     object Label2: TLabel
-      Left = 16
-      Top = 59
+      Left = 10
+      Top = 82
       Width = 73
       Height = 15
       Caption = 'GP3 Location:'
     end
+    object Label4: TLabel
+      Left = 10
+      Top = 129
+      Width = 85
+      Height = 15
+      Caption = 'GP32k Location:'
+    end
     object edtGP2Loc: TEdit
-      Left = 104
-      Top = 24
-      Width = 305
+      Left = 101
+      Top = 31
+      Width = 302
       Height = 23
       TabOrder = 0
     end
     object edtGp3Loc: TEdit
-      Left = 104
-      Top = 56
-      Width = 305
+      Left = 101
+      Top = 79
+      Width = 302
       Height = 23
       TabOrder = 1
     end
     object btnGP2Browse: TButton
-      Left = 432
-      Top = 23
+      Left = 426
+      Top = 30
       Width = 75
       Height = 25
       Caption = 'Browse'
       TabOrder = 2
       OnClick = btnGP2BrowseClick
     end
-    object btnGPBrowse: TButton
-      Left = 432
-      Top = 55
+    object btnGP3Browse: TButton
+      Left = 426
+      Top = 78
       Width = 75
       Height = 25
       Caption = 'Browse'
       TabOrder = 3
-      OnClick = btnGPBrowseClick
+      OnClick = btnGP3BrowseClick
+    end
+    object btnGP32kBrowse: TButton
+      Left = 426
+      Top = 127
+      Width = 75
+      Height = 25
+      Caption = 'Browse'
+      TabOrder = 4
+      OnClick = btnGP32kBrowseClick
+    end
+    object edtGp32KLoc: TEdit
+      Left = 101
+      Top = 126
+      Width = 302
+      Height = 23
+      TabOrder = 5
     end
   end
   object GroupBox2: TGroupBox
     Left = 8
-    Top = 111
+    Top = 175
     Width = 526
     Height = 162
     Caption = 'Jam Format Detection'
@@ -78,7 +101,7 @@ object optionsForm: ToptionsForm
     object Label3: TLabel
       Left = 10
       Top = 27
-      Width = 497
+      Width = 466
       Height = 75
       Caption = 
         'Jam Editor attempts to work out what each JAM file is - HW JAMs ' +
@@ -97,5 +120,14 @@ object optionsForm: ToptionsForm
       TabOrder = 0
       OnClick = Button1Click
     end
+  end
+  object Button3: TButton
+    Left = 240
+    Top = 352
+    Width = 75
+    Height = 25
+    Caption = 'Close'
+    TabOrder = 2
+    OnClick = Button3Click
   end
 end

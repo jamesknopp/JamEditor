@@ -33,10 +33,10 @@ type
     TempDimensions: TJamTempDimensions;
     boolImportedBMP: boolean;
 
-    procedure LoadFromStream(Stream : TStream);
-    procedure SaveToStream(Stream : TStream);
+    procedure LoadFromStream(Stream: TStream);
+    procedure SaveToStream(Stream: TStream);
 
-    function Clone : TJamEntry;
+    function Clone: TJamEntry;
 
     function GetPalette(Index: integer): TBytes;
     function GetPaletteSizeDiv4: Word;
@@ -61,16 +61,15 @@ type
     LevelIdx: array [0 .. 3] of TBitmap;
     PalPerLevel: array [0 .. 3] of TArray<TColor>;
     canvasHeight, canvasWidth: integer;
-    CanvasBitmap: TBitmap;
     JamFileName: string;
     JamFullPath: string;
-    JamPal : array [0 .. 255] of TRGB;
+    JamPal: array [0 .. 255] of TRGB;
 
     function UnJam(const Data: TBytes): TBytes;
     constructor Create;
     destructor Destroy; override;
 
-    function Clone : TJamFile;
+    function Clone: TJamFile;
 
     procedure SetGpxPal(boolGP2: boolean);
 
@@ -81,10 +80,13 @@ type
 
     procedure SaveDecryptedJam(const FileName: string);
 
+    procedure ImportCanvas(FileName: string);
+
     procedure EncodeTexture(JamId: integer; texture: TBitmap);
     procedure EncodeCanvas();
 
-    function AddTexture(bmp: TBitmap; newinfo: TJamEntryInfo; palGen : boolean): integer overload;
+    function AddTexture(bmp: TBitmap; newinfo: TJamEntryInfo; palGen: boolean)
+      : integer overload;
     procedure DeleteTexture(JamId: integer);
 
     procedure AddTexture(textureFilename: string)overload;
@@ -99,8 +101,6 @@ type
     procedure ConvertGPxJam(origJam: TJamFile; gp2Pal: boolean);
     procedure ConvertHWJam(hwJam: THWJamFile; gp2Pal: boolean);
 
-    function CloneAndInvertBMP(const Src: TBitmap): TBitmap;
-
     function GenerateGPxBMP(bitmap: TBitmap; JamId: integer; method: integer;
       simplifyThreshold: integer; BlurThreshold: integer; allPals: boolean;
       protectMatte: boolean): TBitmap;
@@ -111,7 +111,8 @@ type
 
     function DrawFullJam(UIUpdate: boolean): TBitmap;
     function DrawFullJIP(const Raw: TBytes): TBitmap;
-    function DrawFullRCR(const Raw: TBytes; odd: boolean; halfHeight : boolean): TBitmap;
+    function DrawFullRCR(const Raw: TBytes; odd: boolean;
+      halfHeight: boolean): TBitmap;
 
     procedure CalculateImagePtrs;
 
@@ -126,18 +127,18 @@ type
 
     procedure ReCacheTextures();
 
-    procedure ResizeJam(originalHeight : integer);
+    procedure ResizeJam(originalHeight: integer);
 
     function GetNextJamID(JamEntries: TList<TJamEntry>): Word;
 
-    function GetIDX08_X(idx08: word): Byte;
-    function GetIDX08_Y(idx08: word): Byte;
+    function GetIDX08_X(idx08: Word): Byte;
+    function GetIDX08_Y(idx08: Word): Byte;
 
-    function SetIDX08(x,y : byte): byte;
+    function SetIDX08(X, Y: Byte): Byte;
 
-    function GetIDX0aFlags(idx0a :word) : Byte;
-    function GetIDX0aScale(idx0a: word) : Byte;
-    function SetIDX0a(flags, scale : byte) : word;
+    function GetIDX0aFlags(idx0a: Word): Byte;
+    function GetIDX0aScale(idx0a: Word): Byte;
+    function SetIDX0a(flags, scale: Byte): Word;
 
     property Entries: TList<TJamEntry> read FEntries write FEntries;
   end;
@@ -187,7 +188,7 @@ end;
 
 function TJamEntry.Clone: TJamEntry;
 var
-  i: Integer;
+  i: integer;
 begin
   Result := TJamEntry.Create;
 
@@ -204,14 +205,14 @@ begin
   Result.FRawTexture := Copy(Self.FRawTexture);
 
   // Clone FTexture
-  if Assigned(Self.FTexture) then
+  if assigned(Self.FTexture) then
   begin
     Result.FTexture := TBitmap.Create;
     Result.FTexture.Assign(Self.FTexture);
   end;
 
   // Clone FOriginalTex
-  if Assigned(Self.FOriginalTex) then
+  if assigned(Self.FOriginalTex) then
   begin
     Result.FOriginalTex := TBitmap.Create;
     Result.FOriginalTex.Assign(Self.FOriginalTex);
@@ -220,14 +221,13 @@ begin
   // Clone cached textures
   for i := 0 to 3 do
   begin
-    if Assigned(Self.FCachedTex[i]) then
+    if assigned(Self.FCachedTex[i]) then
     begin
       Result.FCachedTex[i] := TBitmap.Create;
       Result.FCachedTex[i].Assign(Self.FCachedTex[i]);
     end;
   end;
 end;
-
 
 function TJamEntry.GetPalette(Index: integer): TBytes;
 begin
@@ -248,18 +248,18 @@ end;
 
 procedure TJamEntry.SaveToStream(Stream: TStream);
 var
-  I, L: Integer;
+  i, L: integer;
 begin
   // Save FInfo
   Stream.WriteBuffer(FInfo, SizeOf(FInfo));
 
   // Save Palettes
-  for I := 0 to 3 do
+  for i := 0 to 3 do
   begin
-    L := Length(FPalettes[I]);
+    L := Length(FPalettes[i]);
     Stream.WriteBuffer(L, SizeOf(L));
     if L > 0 then
-      Stream.WriteBuffer(FPalettes[I][0], L);
+      Stream.WriteBuffer(FPalettes[i][0], L);
   end;
 
   // Save FTexture
@@ -269,9 +269,9 @@ begin
   FOriginalTex.SaveToStream(Stream);
 
   for i := 0 to 3 do
-    begin
-      FCachedTex[i].SaveToStream(Stream);
-    end;
+  begin
+    FCachedTex[i].SaveToStream(Stream);
+  end;
 
   // Save RawTexture
   L := Length(FRawTexture);
@@ -288,36 +288,36 @@ end;
 
 procedure TJamEntry.LoadFromStream(Stream: TStream);
 var
-  I, L: Integer;
+  i, L: integer;
 begin
   // Read FInfo
   Stream.ReadBuffer(FInfo, SizeOf(FInfo));
 
   // Read Palettes
-  for I := 0 to 3 do
+  for i := 0 to 3 do
   begin
     Stream.ReadBuffer(L, SizeOf(L));
-    SetLength(FPalettes[I], L);
+    SetLength(FPalettes[i], L);
     if L > 0 then
-      Stream.ReadBuffer(FPalettes[I][0], L);
+      Stream.ReadBuffer(FPalettes[i][0], L);
   end;
 
   // Read FTexture
-  FreeAndNil(FTexture);
+  freeAndNil(FTexture);
   FTexture := TBitmap.Create;
   FTexture.LoadFromStream(Stream);
 
   // Read FOriginalTex
-  FreeAndNil(FOriginalTex);
+  freeAndNil(FOriginalTex);
   FOriginalTex := TBitmap.Create;
   FOriginalTex.LoadFromStream(Stream);
 
-    for i := 0 to 3 do
-    begin
-      FreeAndNil(FCachedTex[i]);
-      FCachedTex[i] := TBitmap.Create;
-      FCachedTex[i].LoadFromStream(Stream);
-    end;
+  for i := 0 to 3 do
+  begin
+    freeAndNil(FCachedTex[i]);
+    FCachedTex[i] := TBitmap.Create;
+    FCachedTex[i].LoadFromStream(Stream);
+  end;
 
   // Read RawTexture
   Stream.ReadBuffer(L, SizeOf(L));
@@ -338,14 +338,14 @@ end;
 
 function TJamFile.GetNextJamID(JamEntries: TList<TJamEntry>): Word;
 var
-  I: Integer;
+  i: integer;
   MaxID: Word;
 begin
   MaxID := 0;
-  for I := 0 to JamEntries.Count - 1 do
+  for i := 0 to JamEntries.Count - 1 do
   begin
-    if JamEntries[I].FInfo.JamID > MaxID then
-      MaxID := JamEntries[I].FInfo.JamID;
+    if JamEntries[i].FInfo.JamId > MaxID then
+      MaxID := JamEntries[i].FInfo.JamId;
   end;
 
   if MaxID < High(Word) then
@@ -359,7 +359,7 @@ begin
   FEntries := TList<TJamEntry>.Create;
   boolRcrJam := False;
   boolJipMode := False;
-  CanvasBitmap := TBitmap.Create;
+  // CanvasBitmap := TBitmap.Create;
   canvasHeight := 256;
 end;
 
@@ -374,10 +374,10 @@ begin
     freeAndNil(FEntries);
   end;
 
-  if assigned(CanvasBitmap) then
-    freeAndNil(CanvasBitmap);
+  // if assigned(CanvasBitmap) then
+  // freeAndNil(CanvasBitmap);
 
-  setLength(FRawData, 0);
+  SetLength(FRawData, 0);
 
   FRawData := nil;
 
@@ -393,11 +393,10 @@ begin
   inherited;
 end;
 
-
 function TJamFile.Clone: TJamFile;
 var
   NewJam: TJamFile;
-  i: Integer;
+  i: integer;
   Entry: TJamEntry;
 begin
   NewJam := TJamFile.Create;
@@ -411,16 +410,16 @@ begin
   NewJam.JamFullPath := Self.JamFullPath;
   NewJam.JamPal := Self.JamPal;
 
-  // Deep copy entries
+  // copy entries
   for i := 0 to FEntries.Count - 1 do
   begin
     Entry := FEntries[i].Clone; // assumes TJamEntry has Clone method
     NewJam.FEntries.Add(Entry);
   end;
 
-  // Clone CanvasBitmap
-  NewJam.CanvasBitmap := TBitmap.Create;
-  NewJam.CanvasBitmap.Assign(Self.CanvasBitmap);
+  // // Clone CanvasBitmap
+  // NewJam.CanvasBitmap := TBitmap.Create;
+  // NewJam.CanvasBitmap.Assign(Self.CanvasBitmap);
 
   // Clone LevelIdx
   for i := 0 to 3 do
@@ -436,20 +435,20 @@ begin
   Result := NewJam;
 end;
 
-
 procedure TJamFile.CalculateImagePtrs;
 var
-i : integer;
+  i: integer;
 begin
 
-for i := 0 to FEntries.count -1 do
+  for i := 0 to FEntries.Count - 1 do
   begin
     if i = 0 then
     begin
-    FEntries[i].FInfo.ImagePtr := 0;
+      FEntries[i].FInfo.ImagePtr := 0;
     end
     else
-    fentries[i].finfo.imageptr := fentries[i-1].finfo.imageptr + (fentries[i].finfo.PaletteSizeDiv4*4)
+      FEntries[i].FInfo.ImagePtr := FEntries[i - 1].FInfo.ImagePtr +
+        (FEntries[i].FInfo.PaletteSizeDiv4 * 4)
   end;
 
 end;
@@ -466,10 +465,10 @@ begin
 
   boolRcrJam := False;
   boolJipMode := False;
-  CanvasBitmap := TBitmap.Create;
+  // CanvasBitmap := TBitmap.Create;
   canvasHeight := Height;
 
-  setLength(FRawData, 256 * Height);
+  SetLength(FRawData, 256 * Height);
   FHeader.NumItems := 0;
   FHeader.JamTotalHeight := Height;
 
@@ -483,10 +482,11 @@ end;
 procedure TJamFile.SetGpxPal(boolGP2: boolean);
 var
   i: integer;
+  c: TRGB;
 begin
   if boolGP2 then
     for i := 0 to 255 do
-      gpxPal[i] := gp2pal[i]
+      gpxPal[i] := gp2Pal[i]
   else
     for i := 0 to 255 do
       gpxPal[i] := gp3Pal[i];
@@ -553,18 +553,17 @@ const
   RCRFixupFiles: array [0 .. 9] of string = ('rcr1a', 'rcr2a', 'rcr3a', 'rcr4a',
     'rcr5a', 'rcr1', 'rcr2', 'rcr3', 'rcr4', 'rcr5');
 HardcodedDims:
-array [0 .. 7] of record Name: string;
+array [0 .. 6] of record Name: string;
 Width, Height: integer;
 IsRCR:
 boolean;
 end
-= ((Name: 'mhill'; Width: 512; Height: 320; IsRCR: False), (Name: 'shill';
-  Width: 64; Height: 16; IsRCR: False), (Name: 'car_srf'; Width: 512;
-  Height: 544; IsRCR: True), (Name: 'hlm_srf'; Width: 256; Height: 64;
-  IsRCR: True), (Name: 'wh_srf'; Width: 512; Height: 256; IsRCR: True),
-  (Name: 'vcp_srf'; Width: 512; Height: 256; IsRCR: True), (Name: 'vcp_srf2';
-  Width: 512; Height: 256; IsRCR: True), (Name: 'shill'; Width: 64; Height: 16;
-  IsRCR: False));
+= ((Name: 'mhill'; Width: 512; Height: 327; IsRCR: True), (Name: 'shill';
+  Width: 148; Height: 31; IsRCR: True), (Name: 'car_srf'; Width: 512;
+  Height: 1088; IsRCR: True), (Name: 'hlm_srf'; Width: 256; Height: 64;
+  IsRCR: True), (Name: 'wh_srf'; Width: 512; Height: 512; IsRCR: True),
+  (Name: 'vcp_srf'; Width: 512; Height: 512; IsRCR: True), (Name: 'vcp_srf2';
+  Width: 512; Height: 512; IsRCR: True));
 
 var
   Raw, Buf: TBytes;
@@ -619,25 +618,6 @@ begin
       FEntries.Add(TJamEntry.Create(Info));
     end;
 
-    if boolRcrJam then
-    begin
-      for i := 0 to 255 do
-      begin
-        c.r := i;
-        c.g := i;
-        c.b := i;
-        gpxPal[i] := c;
-      end;
-
-      for i := 0 to FHeader.NumItems - 1 do
-      begin
-        // FEntries[i].FInfo.Height := FEntries[i].FInfo.Height * 2;
-        // FEntries[i].FInfo.WIDTH := FEntries[i].FInfo.wIDTH div 2;
-        FEntries[i].FInfo.X := FEntries[i].FInfo.X div 2;
-        FEntries[i].FInfo.Y := FEntries[i].FInfo.Y div 2;
-      end;
-    end;
-
     // Parse Palettes and dimensions
     for i := 0 to FHeader.NumItems - 1 do
     begin
@@ -655,7 +635,7 @@ begin
 
           for var p := 0 to 3 do
           begin
-            setLength(FPalettes[p], palCount);
+            SetLength(FPalettes[p], palCount);
             Move(Buf[Ptr], FPalettes[p][0], palCount);
             Inc(Ptr, palCount);
           end;
@@ -666,7 +646,7 @@ begin
       end;
     end;
   end;
-
+  //
   // Override hardcoded JAM types
   for var H in HardcodedDims do
     if sFilename = H.Name then
@@ -674,17 +654,17 @@ begin
       intJamMaxWidth := H.Width;
       intJamMaxHeight := H.Height;
       FHeader.JamTotalHeight := H.Height;
-      boolRcrJam := boolRcrJam or H.IsRCR;
-      Break;
+      boolRcrJam := H.IsRCR;
+      // Break;
     end;
 
   // Extract raw pixel data
   BlockCount := FHeader.JamTotalHeight;
   TrueSize := BlockCount * 256;
-  if Ptr + TrueSize > Length(Buf) then
-    raise Exception.CreateFmt
-      ('JAM image data too short: need %d bytes at offset %d, have %d',
-      [TrueSize, Ptr, Length(Buf)]);
+  // if Ptr + TrueSize > Length(Buf) then
+  // raise Exception.CreateFmt
+  // ('JAM image data too short: need %d bytes at offset %d, have %d',
+  // [TrueSize, Ptr, Length(Buf)]);
 
   FRawData := Copy(Buf, Ptr, TrueSize);
 
@@ -707,20 +687,25 @@ begin
           CachePaletteBMP(i);
         end;
 
-//      if Finfo.PaletteSizeDiv4 = 0 then
-//      try
-//      ZeroPalette(i);
-//      finally
-//
-//      end;
+        // if Finfo.PaletteSizeDiv4 = 0 then
+        // try
+        // ZeroPalette(i);
+        // finally
+        //
+        // end;
       end;
-     
+
     end;
 
   JamFileName := sFilename;
   JamFullPath := FileName;
 
+  canvasHeight := FHeader.JamTotalHeight;
 
+  if boolRcrJam then
+    canvasWidth := 512
+  else
+    canvasWidth := 256;
 
   Result := True;
 end;
@@ -728,7 +713,7 @@ end;
 procedure TJamFile.SaveToFile(const FileName: string);
 var
   ms: TMemoryStream;
-  entry: TJamEntry;
+  Entry: TJamEntry;
   palBytes, i: integer;
   buffer: TBytes;
 begin
@@ -740,14 +725,14 @@ begin
     // 1) Header
     ms.WriteBuffer(FHeader, SizeOf(FHeader));
 
-    // 2) All entry‑infos
-    for entry in FEntries do
-      ms.WriteBuffer(entry.FInfo, SizeOf(entry.FInfo));
+    // 2) All entry infos
+    for Entry in FEntries do
+      ms.WriteBuffer(Entry.FInfo, SizeOf(Entry.FInfo));
 
-    // 3) Per‑entry palettes + textures
-    for entry in FEntries do
+    // 3) Per entry palettes + textures
+    for Entry in FEntries do
     begin
-      palBytes := (entry.FInfo.PaletteSizeDiv4);
+      palBytes := (Entry.FInfo.PaletteSizeDiv4);
       // Write each of the up-to-4 palettes
       for i := 0 to 3 do
       begin
@@ -755,7 +740,7 @@ begin
         begin
           // // If that palette exists, write it; otherwise write zeros
           // if Length(entry.FPalettes[i]) >= palBytes then
-          ms.WriteBuffer(entry.FPalettes[i][0], palBytes)
+          ms.WriteBuffer(Entry.FPalettes[i][0], palBytes)
           // else
           // ms.WriteBuffer(Pointer(AllocMem(palBytes))^, palBytes);
         end;
@@ -768,11 +753,11 @@ begin
       ms.WriteBuffer(FRawData[0], Length(FRawData));
 
     // 5) Extract to a TBytes to call UnJam
-    setLength(buffer, ms.Size);
+    SetLength(buffer, ms.Size);
     ms.Position := 0;
     ms.ReadBuffer(buffer[0], ms.Size);
 
-    // 6) XOR-scramble
+    // 6) XOr
     buffer := UnJam(buffer);
 
     // 7) Write to disk
@@ -782,33 +767,101 @@ begin
   end;
 end;
 
+procedure TJamFile.ImportCanvas(FileName: string);
+var
+  indices, tempRawCanvas: TBytes;
+  X, Y, i, origidx, bestidx: integer;
+  bmp: TBitmap;
+  boolCorrectSize: boolean;
+begin
+
+  boolCorrectSize := False;
+
+  bmp := TBitmap.Create;
+
+  bmp.LoadFromFile(FileName);
+
+  if (bmp.Height = canvasHeight) and (bmp.Width = canvasWidth) then
+  begin
+    indices := BitmapToIndices(bmp);
+
+    SetLength(tempRawCanvas, canvasWidth * canvasHeight);
+
+    for Y := 0 to canvasHeight - 1 do
+      for X := 0 to canvasWidth - 1 do
+      begin
+        origidx := indices[Y * canvasWidth + X];
+        bestidx := origidx;
+        tempRawCanvas[Y * canvasWidth + X] := bestidx;
+      end;
+
+    FRawData := nil;
+    SetLength(FRawData, canvasWidth * canvasHeight);
+    for Y := 0 to canvasHeight - 1 do
+    begin
+      Move(tempRawCanvas[Y * canvasWidth], FRawData[Y * canvasWidth],
+        canvasWidth);
+    end;
+
+    for i := 0 to FHeader.NumItems - 1 do
+    begin
+
+      ZeroPalette(i);
+      with FEntries[i] do
+      begin
+        if assigned(FTexture) then
+          FTexture.free;
+
+        FTexture := DrawSingleTexture(FRawData, Length(FRawData), i, False);
+
+        if assigned(FOriginalTex) then
+          freeAndNil(FOriginalTex);
+        FOriginalTex := DrawPalTexture(i);
+        CachePaletteBMP(i);
+
+      end;
+
+    end;
+
+  end
+  else
+  begin
+    ShowMessage
+      (Format('Bitmap file size incorrect - it should match the size of the JAM file. Bitmap is %d x %d and JAM is %d x %d',
+      [bmp.Width, bmp.Height, canvasWidth, canvasHeight]));
+    exit;
+  end;
+
+  bmp.free;
+end;
+
 procedure TJamFile.EncodeCanvas();
 var
-  entry: TJamEntry;
+  Entry: TJamEntry;
   Info: TJamEntryInfo;
   W, H, canvasHeight, canvasWidth: integer;
   X0, Y0: integer;
-  TempRaw, TempRawCanvas: TBytes;
+  TempRaw, tempRawCanvas: TBytes;
   Y, pos: integer;
   tempBMP: TBitmap;
   i: integer;
   indices: TBytes;
-  X, origIdx: integer;
-  bestIdx: integer;
+  X, origidx: integer;
+  bestidx: integer;
 
 begin
 
   for i := 0 to FEntries.Count - 1 do
   begin
-    entry := FEntries[i];
-    Info := entry.FInfo;
+    Entry := FEntries[i];
+    Info := Entry.FInfo;
 
     W := Info.Width;
     H := Info.Height;
     X0 := Info.X;
     Y0 := Info.Y;
 
-    TempRaw := entry.FRawTexture;
+    TempRaw := Entry.FRawTexture;
 
     for Y := 0 to H - 1 do
     begin
@@ -818,30 +871,31 @@ begin
   end;
 
   tempBMP := DrawFullJIP(FRawData);
-  // tempBMP := CloneAndInvertBMP(tempBMP);
+
   canvasWidth := 256;
   canvasHeight := FHeader.JamTotalHeight;
 
   // 1) grab the raw 8-bit indices from the bitmap
   indices := BitmapToIndices(tempBMP);
 
-  setLength(TempRawCanvas, canvasWidth * canvasHeight);
-  // 3) Scan each pixel: find nearest GPxPal index, record in TempRaw & UsedFlags
+  SetLength(tempRawCanvas, canvasWidth * canvasHeight);
+
+  // 3) Scan each pixel: find nearest GPxPal index, record in TempRaw
   for Y := 0 to canvasHeight - 1 do
     for X := 0 to canvasWidth - 1 do
     begin
-      origIdx := indices[Y * canvasWidth + X];
-      bestIdx := origIdx;
-      TempRawCanvas[Y * canvasWidth + X] := bestIdx;
+      origidx := indices[Y * canvasWidth + X];
+      bestidx := origidx;
+      tempRawCanvas[Y * canvasWidth + X] := bestidx;
     end;
 
   // 7) Write TempRaw into the entry’s FRawTexture and the master FRawData
 
   FRawData := nil;
-  setLength(FRawData, canvasWidth * canvasHeight);
+  SetLength(FRawData, canvasWidth * canvasHeight);
   for Y := 0 to canvasHeight - 1 do
   begin
-    Move(TempRawCanvas[Y * canvasWidth], FRawData[Y * canvasWidth],
+    Move(tempRawCanvas[Y * canvasWidth], FRawData[Y * canvasWidth],
       canvasWidth);
   end;
 end;
@@ -850,45 +904,45 @@ end;
 
 procedure TJamFile.EncodeTexture(JamId: integer; texture: TBitmap);
 var
-  entry: TJamEntry;
+  Entry: TJamEntry;
   Info: TJamEntryInfo;
   W, H: integer;
   indices, TempRaw: TBytes;
-  X, Y, origIdx: integer;
-  bestIdx: integer;
+  X, Y, origidx: integer;
+  bestidx: integer;
 
 begin
-  entry := FEntries[JamId];
-  Info := entry.FInfo;
+  Entry := FEntries[JamId];
+  Info := Entry.FInfo;
   W := Info.Width;
   H := Info.Height;
 
   // 1) grab the raw 8-bit indices from the bitmap
   indices := BitmapToIndices(texture);
 
-  setLength(TempRaw, W * H);
-  // 3) Scan each pixel: find nearest GPxPal index, record in TempRaw & UsedFlags
+  SetLength(TempRaw, W * H);
+  // 3) Scan each pixel: find nearest GPxPal index, record in TempRaw
   for Y := 0 to H - 1 do
     for X := 0 to W - 1 do
     begin
-      origIdx := indices[Y * W + X];
-      bestIdx := origIdx;
-      TempRaw[Y * W + X] := Byte(bestIdx);
+      origidx := indices[Y * W + X];
+      bestidx := origidx;
+      TempRaw[Y * W + X] := Byte(bestidx);
     end;
 
   // 7) Write TempRaw into the entry’s FRawTexture and the master FRawData
 
-  setLength(entry.FRawTexture, W * H);
+  SetLength(Entry.FRawTexture, W * H);
   for Y := 0 to H - 1 do
   begin
-    Move(TempRaw[Y * W], entry.FRawTexture[Y * W], W);
+    Move(TempRaw[Y * W], Entry.FRawTexture[Y * W], W);
   end;
 
-  if assigned(entry.FTexture) then
-    entry.FTexture.free;
+  if assigned(Entry.FTexture) then
+    Entry.FTexture.free;
 
-  entry.FTexture := DrawSingleTexture(entry.FRawTexture,
-    Length(entry.FRawTexture), JamId, True);
+  Entry.FTexture := DrawSingleTexture(Entry.FRawTexture,
+    Length(Entry.FRawTexture), JamId, True);
 end;
 
 
@@ -904,9 +958,14 @@ var
   LocalPal: array [0 .. 255] of Byte;
   bmp: TBitmap;
   dstID: integer;
+  tempY, tempX, prevY: integer;
 begin
 
-  W := FEntries[JamId].FInfo.Width;
+  if boolRcrJam then
+    W := FEntries[JamId].FInfo.Width * 2
+  else
+    W := FEntries[JamId].FInfo.Width;
+
   H := FEntries[JamId].FInfo.Height;
 
   if drawFromEntry then
@@ -917,12 +976,23 @@ begin
   end
   else
   begin
-    if JamFileName = 'chwheel1' then
-      SrcStride := 512
+    SrcStride := 256;
+
+    if boolRcrJam then
+    begin
+      SrcStride := 512;
+      X0 := FEntries[JamId].FInfo.X;
+      if FEntries[JamId].FInfo.Y mod 2 <> 0 then
+        X0 := X0 + 256;
+
+      Y0 := FEntries[JamId].FInfo.Y div 2;
+    end
     else
-      SrcStride := 256;
-    X0 := FEntries[JamId].FInfo.X;
-    Y0 := FEntries[JamId].FInfo.Y;
+    begin
+      X0 := FEntries[JamId].FInfo.X;
+      Y0 := FEntries[JamId].FInfo.Y;
+    end;
+
   end;
 
   // Default = identity mapping
@@ -944,7 +1014,7 @@ begin
     bmp.PixelFormat := pf8bit;
     bmp.Palette := CreateGPxPal;
 
-    setLength(FEntries[JamId].FRawTexture, W * H);
+    SetLength(FEntries[JamId].FRawTexture, W * H);
 
     for Y := 0 to H - 1 do
       for X := 0 to W - 1 do
@@ -964,7 +1034,10 @@ begin
       end;
     bmp.canvas.Unlock;
 
-    Result := bmp;
+    if boolRcrJam then
+      Result := ExtractColumns8Bit(bmp, boolRCRDrawMode)
+    else
+      Result := bmp;
   except
     bmp.free;
     raise;
@@ -1002,7 +1075,7 @@ begin
         FEntries[JamId].FCachedTex[palIndex] := TBitmap.Create;
         FEntries[JamId].FCachedTex[palIndex].Assign(bmp);
       finally
-        bmp.free; // cleanup our temporary
+        bmp.free; // cleanup
       end;
     end;
   finally
@@ -1033,14 +1106,14 @@ begin
   Result := nil;
 
   if JamId = -1 then
-    Exit;
+    exit;
 
   palCount := FEntries[JamId].FInfo.PaletteSizeDiv4;
   if palCount = 0 then
   begin
     Result := DrawSingleTexture(FEntries[JamId].FRawTexture,
       FHeader.JamTotalHeight, JamId, True);
-    Exit;
+    exit;
   end;
 
   W := FEntries[JamId].FInfo.Width;
@@ -1092,7 +1165,7 @@ var
 begin
   bmpAll := TBitmap.Create;
   try
-    bmpall.canvas.lock;
+    bmpAll.canvas.lock;
     bmpAll.PixelFormat := pf8bit;
     bmpAll.Palette := CreateGPxPal;
     bmpAll.SetSize(256, FHeader.JamTotalHeight);
@@ -1103,30 +1176,30 @@ begin
     if boolRcrJam then
     begin
       bmpAll.SetSize(512, FHeader.JamTotalHeight);
-      entryBmp := DrawFullRCR(FRawData, boolRCRDrawMode,true);
+      entryBmp := DrawFullRCR(FRawData, boolRCRDrawMode, True);
       try
         bmpAll.canvas.Draw(0, 0, entryBmp);
       finally
         entryBmp.free;
       end;
-      bmpall.canvas.unlock;
+      bmpAll.canvas.Unlock;
       Result := bmpAll;
-      Exit;
+      exit;
     end
     else if boolJipMode then
     begin
       entryBmp := DrawFullJIP(FRawData);
       try
-          bmpAll.SetSize(256, FHeader.JamTotalHeight);
+        bmpAll.SetSize(256, FHeader.JamTotalHeight);
 
         intJamMaxHeight := FHeader.JamTotalHeight;
         bmpAll.canvas.Draw(0, 0, entryBmp);
       finally
         entryBmp.free;
       end;
-      bmpall.Canvas.Unlock;
+      bmpAll.canvas.Unlock;
       Result := bmpAll;
-      Exit;
+      exit;
     end;
 
     // Standard JAM
@@ -1136,7 +1209,7 @@ begin
       try
         bmpAll.canvas.Draw(FEntries[i].Info.X, FEntries[i].Info.Y, tempBMP);
       finally
-        bmpall.Canvas.unlock;
+        bmpAll.canvas.Unlock;
         tempBMP.free;
       end;
     end;
@@ -1154,7 +1227,7 @@ var
   i: integer;
 begin
   bmpAll := TBitmap.Create;
-  bmpall.canvas.lock;
+  bmpAll.canvas.lock;
   try
     bmpAll.PixelFormat := pf8bit;
     bmpAll.Palette := CreateGPxPal;
@@ -1167,16 +1240,16 @@ begin
     if boolRcrJam then
     begin
       bmpAll.Width := 512;
-      bmpAll.Height := FHeader.JamTotalHeight;
-      entryBmp := DrawFullRCR(FRawData, boolRCRDrawMode,true);
+      bmpAll.Height := FHeader.JamTotalHeight div 2;
+      entryBmp := DrawFullRCR(FRawData, boolRCRDrawMode, True);
       try
         bmpAll.canvas.Draw(0, 0, entryBmp);
       finally
-        bmpall.canvas.unlock;
+        bmpAll.canvas.Unlock;
         entryBmp.free;
       end;
       Result := bmpAll;
-      Exit;
+      exit;
     end
     else if boolJipMode then
     begin
@@ -1186,13 +1259,14 @@ begin
         intJamMaxHeight := FHeader.JamTotalHeight;
         bmpAll.canvas.Draw(0, 0, entryBmp);
       finally
-        bmpall.Canvas.unlock;
+        bmpAll.canvas.Unlock;
         entryBmp.free;
       end;
       Result := bmpAll;
-      Exit;
+      exit;
     end
     else
+
     begin
       for i := 0 to FEntries.Count - 1 do
       begin
@@ -1208,7 +1282,7 @@ begin
             bmpAll.canvas.Draw(FEntries[i].Info.X, FEntries[i].Info.Y,
               stretchedBmp);
           finally
-            bmpall.Canvas.unlock;
+            bmpAll.canvas.Unlock;
             freeAndNil(stretchedBmp);
           end;
         end
@@ -1220,7 +1294,7 @@ begin
             bmpAll.canvas.Draw(FEntries[i].Info.X, FEntries[i].Info.Y,
               entryBmp);
           finally
-            bmpall.Canvas.unlock;
+            bmpAll.canvas.Unlock;
             entryBmp.free;
           end;
         end;
@@ -1230,54 +1304,6 @@ begin
     Result := bmpAll;
   except
     bmpAll.free;
-    raise;
-  end;
-end;
-
-function TJamFile.CloneAndInvertBMP(const Src: TBitmap): TBitmap;
-var
-  RowWidth, i, topOffset, bottomOffset: integer;
-  Height, Width: integer;
-  tmpBuff: TBytes;
-begin
-  // Create new bitmap and match properties
-  Result := TBitmap.Create;
-  try
-    Result.PixelFormat := Src.PixelFormat;
-    Result.Width := Src.Width;
-    Result.Height := Src.Height;
-
-    Height := Src.Height;
-    Width := Src.Width;
-
-    // Calculate padded row width in bytes (4-byte alignment)
-    RowWidth := Width;
-    if (RowWidth and 3) <> 0 then
-      RowWidth := (RowWidth + 4) and not 3;
-
-    // Copy each scanline from source to result
-    for i := 0 to Height - 1 do
-      Move(PByte(Src.ScanLine[i])^, PByte(Result.ScanLine[i])^, RowWidth);
-
-    // Allocate temporary buffer for one scanline
-    setLength(tmpBuff, RowWidth);
-
-    // Swap rows top-to-bottom to invert vertically
-    for i := 0 to (Height div 2) - 1 do
-    begin
-      topOffset := i;
-      bottomOffset := Height - 1 - i;
-
-      // Copy top row to temp
-      Move(PByte(Result.ScanLine[topOffset])^, tmpBuff[0], RowWidth);
-      // Copy bottom row into top row
-      Move(PByte(Result.ScanLine[bottomOffset])^,
-        PByte(Result.ScanLine[topOffset])^, RowWidth);
-      // Copy temp (original top) into bottom row
-      Move(tmpBuff[0], PByte(Result.ScanLine[bottomOffset])^, RowWidth);
-    end;
-  except
-    Result.free;
     raise;
   end;
 end;
@@ -1314,14 +1340,15 @@ begin
   end;
 end;
 
-function TJamFile.DrawFullRCR(const Raw: TBytes; odd: boolean; halfHeight : boolean): TBitmap;
+function TJamFile.DrawFullRCR(const Raw: TBytes; odd: boolean;
+  halfHeight: boolean): TBitmap;
 var
   i, canvasWidth, canvasHeight: integer;
   tempRCR: TBitmap;
 begin
   canvasWidth := 512;
   if halfHeight then
-  canvasHeight := FHeader.JamTotalHeight div 2
+    canvasHeight := FHeader.JamTotalHeight div 2
   else
     canvasHeight := FHeader.JamTotalHeight;
 
@@ -1350,9 +1377,10 @@ function TJamFile.DrawOutlines(JamCanvas: TBitmap): TBitmap;
 var
   i: integer;
   tmpBMP: TBitmap;
+  tempX, prevY, tempY: integer;
 begin
   if not boolDrawOutlines then
-    Exit(JamCanvas);
+    exit(JamCanvas);
 
   // Clone
   tmpBMP := TBitmap.Create;
@@ -1361,7 +1389,30 @@ begin
     // Draw on the clone
     for i := 0 to FEntries.Count - 1 do
       with FEntries[i].Info do
-        DrawTextureOutlines(tmpBMP, X, Y, Width, Height, i, JamId);
+      begin
+        tempX := X;
+        tempY := Y;
+
+        if boolRcrJam then
+        begin
+          if Y mod 2 <> 0 then
+          begin
+            // prevY := FEntries[i - 1].FInfo.Y;
+            tempY := tempY - 1;
+            tempX := tempX + 256;
+          end
+          else
+          begin
+            tempY := Y;
+            tempX := X;
+          end;
+
+          tempY := tempY div 2;
+          DrawTextureOutlines(tmpBMP, tempX, tempY, Width * 2, Height, i, JamId)
+        end
+        else
+          DrawTextureOutlines(tmpBMP, X, Y, Width, Height, i, JamId);
+      end;
     // Hand ownership to the caller
     Result := tmpBMP;
     tmpBMP := nil;
@@ -1375,7 +1426,7 @@ var
   srcPic: TPicture;
   Info: TJamEntryInfo;
   newTex: TJamEntry;
-  X: integer;
+  X, i: integer;
   tmpCanvas, scaledCanvas: TBitmap;
   transBool: boolean;
 begin
@@ -1388,6 +1439,20 @@ begin
     Info.Y := 0;
     Info.Width := srcPic.Width;
     Info.Height := srcPic.Height;
+
+    Info.scaleX := 0;
+    Info.scaleY := 0;
+    Info.scaleFlag := 0;
+    Info.scaleFactor := 0;
+
+    Info.Idx16 := 0;
+    Info.Idx17 := 0;
+    Info.Unk := 0;
+    Info.idx0e := 0;
+
+    for i := 0 to 7 do
+      Info.Idx18[i] := 0;
+
     if FEntries.Count > 0 then
       Info.JamId := FEntries[FEntries.Count - 1].Info.JamId + 1
     else
@@ -1449,14 +1514,15 @@ begin
   Dec(FHeader.NumItems);
 end;
 
-function TJamFile.AddTexture(bmp: TBitmap; newinfo: TJamEntryInfo; palGen : boolean): integer;
+function TJamFile.AddTexture(bmp: TBitmap; newinfo: TJamEntryInfo;
+  palGen: boolean): integer;
 var
   Info: TJamEntryInfo;
   newTex: TJamEntry;
   X, Y: integer;
   tmpCanvas, scaledCanvas: TBitmap;
   transBool: boolean;
-  tmpBMP : TBitmap;
+  tmpBMP: TBitmap;
 begin
   tmpCanvas := TBitmap.Create;
   tmpBMP := TBitmap.Create;
@@ -1471,9 +1537,10 @@ begin
     Info.JamId := newinfo.JamId;
     Info.JamFlags := newinfo.JamFlags;
     Info.Unk := newinfo.Unk;
-//    Info.Idx08 := newinfo.Idx08;
-//    Info.Idx0A := newinfo.Idx0A;
-//    Info.Idx0E := newinfo.Idx0E;
+    Info.scaleX := newinfo.scaleX;
+    Info.scaleY := newinfo.scaleY;
+    Info.scaleFlag := newinfo.scaleFlag;
+    Info.scaleFactor := newinfo.scaleFactor;
     Info.Idx16 := newinfo.Idx16;
     Info.Idx17 := newinfo.Idx17;
 
@@ -1507,14 +1574,16 @@ begin
     intSelectedTexture := X;
 
     if palGen then
-    FEntries[X].FTexture := GenerateGPxBMP(scaledCanvas, X, intSimplifyMethod, intSimplifyThreshold, intBlurThreshold, boolSimpifyAllPals, boolProtectTrans)
+      FEntries[X].FTexture := GenerateGPxBMP(scaledCanvas, X, intSimplifyMethod,
+        intSimplifyThreshold, intBlurThreshold, boolSimpifyAllPals,
+        boolProtectTrans)
     else
     begin
-    tmpBMP.Assign(newTex.FTexture);
-    tmpBMP.PixelFormat := pf8bit;
-    tmpBMP := CreateGPxPalBMP(newTex.FTexture);
-    tmpBMP.Palette := CreateGPxPal;
-    EncodeTexture(x, tmpBMP);
+      tmpBMP.Assign(newTex.FTexture);
+      tmpBMP.PixelFormat := pf8bit;
+      tmpBMP := CreateGPxPalBMP(newTex.FTexture);
+      tmpBMP.Palette := CreateGPxPal;
+      EncodeTexture(X, tmpBMP);
     end;
 
     FEntries[X].FOriginalTex := CreateGPxPalBMP(scaledCanvas);
@@ -1547,7 +1616,7 @@ var
 begin
   srcPic := TPicture.Create;
   tmpCanvas := TBitmap.Create;
-  tmpcanvas.Canvas.lock;
+  tmpCanvas.canvas.lock;
   scaledCanvas := nil;
   textureWidth := FEntries[JamId].Info.Width;
   textureHeight := FEntries[JamId].Info.Height;
@@ -1562,7 +1631,7 @@ begin
     tmpCanvas.canvas.StretchDraw(Rect(0, 0, textureWidth, textureHeight),
       scaledCanvas);
 
-   tmpcanvas.Canvas.unlock;
+    tmpCanvas.canvas.Unlock;
 
     if assigned(FEntries[JamId].FTexture) then
       FEntries[JamId].FTexture.free;
@@ -1657,14 +1726,13 @@ var
   maskBMP4: TBitmap;
   singleIDXMap: TBitmap;
 
-
   LastColor: TColor;
-  RepeatCount, TrimSize: Integer;
-  CanTrim: Boolean;
-  PaletteLen, Level: Integer;
-  TrimFrom: array[0..3] of Integer;
+  RepeatCount, TrimSize: integer;
+  CanTrim: boolean;
+  PaletteLen, Level: integer;
+  TrimFrom: array [0 .. 3] of integer;
   CurrentColor, CompareColor: TColor;
-  RepeatStart: Integer;
+  RepeatStart: integer;
 begin
 
   for i := 0 to 3 do
@@ -1681,7 +1749,7 @@ begin
   singleIDXMap.PixelFormat := pf8bit;
 
   for i := 0 to 3 do
-    setLength(PalPerLevel[i], 256);
+    SetLength(PalPerLevel[i], 256);
 
   SrcRGB := bitmap;
 
@@ -1708,13 +1776,12 @@ begin
 
     // Level 1 quantize → L1Idx
 
-
     maskBMP := CreateTransparencyMatte(SrcRGB);
     maskBMP2 := maskBMP;
     maskBMP3 := maskBMP;
     maskBMP4 := maskBMP;
 
-    L1Idx := CreateGPxPalBMP(SrcRGB,maskbmp);
+    L1Idx := CreateGPxPalBMP(SrcRGB, maskBMP);
 
     LevelIdx[0].Assign(L1Idx);
 
@@ -1765,67 +1832,67 @@ begin
   BuildBmpIdxPal([LevelIdx[0], LevelIdx[1], LevelIdx[2], LevelIdx[3]],
     singleIDXMap, PalPerLevel);
 
-  //////////////////////
-// Check for trailing repeated colors across all palettes
-PaletteLen := Length(PalPerLevel[0]); // assume all same to start
+  /// ///////////////////
+  // Check for trailing repeated colors across all palettes
+  PaletteLen := Length(PalPerLevel[0]); // assume all same to start
 
-//  for Level := 0 to 3 do
-//  begin
-//    TrimFrom[Level] := PaletteLen; // default: no trimming
-//
-//    // Scan backwards from the end
-//    for i := PaletteLen - 2 downto 0 do
-//    begin
-//      CurrentColor := PalPerLevel[Level][i + 1];
-//      RepeatCount := 1;
-//
-//      // Count how many times this same color repeats backwards
-//      for j := i downto 0 do
-//      begin
-//        CompareColor := PalPerLevel[Level][j];
-//        if CompareColor = CurrentColor then
-//          Inc(RepeatCount)
-//        else
-//          Break;
-//      end;
-//
-//      if RepeatCount >= 4 then
-//      begin
-//        // Found a run of 4+ repeated colors: trim from here forward
-//        RepeatStart := i + 2 - RepeatCount;
-//        TrimFrom[Level] := RepeatStart + 1; // keep 1 instance
-//        Break;
-//      end;
-//    end;
-//  end;
-//
-//  // Final length is min of all 4
-//  PaletteLen := Min(Min(TrimFrom[0], TrimFrom[1]), Min(TrimFrom[2], TrimFrom[3]));
-//
-//  // Trim all palettes to unified length
+  // for Level := 0 to 3 do
+  // begin
+  // TrimFrom[Level] := PaletteLen; // default: no trimming
+  //
+  // // Scan backwards from the end
+  // for i := PaletteLen - 2 downto 0 do
+  // begin
+  // CurrentColor := PalPerLevel[Level][i + 1];
+  // RepeatCount := 1;
+  //
+  // // Count how many times this same color repeats backwards
+  // for j := i downto 0 do
+  // begin
+  // CompareColor := PalPerLevel[Level][j];
+  // if CompareColor = CurrentColor then
+  // Inc(RepeatCount)
+  // else
+  // Break;
+  // end;
+  //
+  // if RepeatCount >= 4 then
+  // begin
+  // // Found a run of 4+ repeated colors: trim from here forward
+  // RepeatStart := i + 2 - RepeatCount;
+  // TrimFrom[Level] := RepeatStart + 1; // keep 1 instance
+  // Break;
+  // end;
+  // end;
+  // end;
+  //
+  // // Final length is min of all 4
+  // PaletteLen := Min(Min(TrimFrom[0], TrimFrom[1]), Min(TrimFrom[2], TrimFrom[3]));
+  //
+  // // Trim all palettes to unified length
   for Level := 0 to 3 do
     SetLength(PalPerLevel[Level], PaletteLen);
 
-  //////////////////////
+  /// ///////////////////
 
   jamPalSize := FEntries[JamId].PaletteSizeDiv4;
 
-//  if FEntries[JamId].PaletteSizeDiv4 < Length(PalPerLevel[0]) then
-//  begin
-    FEntries[JamId].PaletteSizeDiv4 := Length(PalPerLevel[0]);
-    setLength(FEntries[JamId].FPalettes[0], Length(PalPerLevel[0]));
-    setLength(FEntries[JamId].FPalettes[1], Length(PalPerLevel[0]));
-    setLength(FEntries[JamId].FPalettes[2], Length(PalPerLevel[0]));
-    setLength(FEntries[JamId].FPalettes[3], Length(PalPerLevel[0]));
+  // if FEntries[JamId].PaletteSizeDiv4 < Length(PalPerLevel[0]) then
+  // begin
+  FEntries[JamId].PaletteSizeDiv4 := Length(PalPerLevel[0]);
+  SetLength(FEntries[JamId].FPalettes[0], Length(PalPerLevel[0]));
+  SetLength(FEntries[JamId].FPalettes[1], Length(PalPerLevel[0]));
+  SetLength(FEntries[JamId].FPalettes[2], Length(PalPerLevel[0]));
+  SetLength(FEntries[JamId].FPalettes[3], Length(PalPerLevel[0]));
 
-    for i := jamPalSize to Length(PalPerLevel[0]) - 1 do
-    begin
-      FEntries[JamId].FPalettes[0][i] := 0;
-      FEntries[JamId].FPalettes[1][i] := 0;
-      FEntries[JamId].FPalettes[2][i] := 0;
-      FEntries[JamId].FPalettes[3][i] := 0;
-    end;
-//  end;
+  for i := jamPalSize to Length(PalPerLevel[0]) - 1 do
+  begin
+    FEntries[JamId].FPalettes[0][i] := 0;
+    FEntries[JamId].FPalettes[1][i] := 0;
+    FEntries[JamId].FPalettes[2][i] := 0;
+    FEntries[JamId].FPalettes[3][i] := 0;
+  end;
+  // end;
 
   for i := 0 to 3 do
   begin
@@ -1873,18 +1940,18 @@ var
 begin
 
   if gp2Pal then
-    SetGpxPal(true)
+    SetGpxPal(True)
   else
-    SetGpxPal(false);
+    SetGpxPal(False);
 
   canvasHeight := hwJam.FHeader.JamTotalHeight;
 
-  CanvasBitmap.Height := canvasHeight;
-  CanvasBitmap.Width := 256;
+  // CanvasBitmap.Height := canvasHeight;
+  // CanvasBitmap.Width := 256;
 
   FHeader.JamTotalHeight := hwJam.FHeader.JamTotalHeight;
 
-  setLength(FRawData, 256 * hwJam.FHeader.JamTotalHeight);
+  SetLength(FRawData, 256 * hwJam.FHeader.JamTotalHeight);
 
   intJamMaxWidth := 256;
   intJamMaxHeight := hwJam.FHeader.JamTotalHeight;
@@ -1898,12 +1965,17 @@ begin
     newinfo.JamId := hwJam.FEntries[i].FInfo.JamId;
     newinfo.JamFlags := hwJam.FEntries[i].FInfo.JamFlags;
 
+    newinfo.scaleX := hwJam.FEntries[i].FInfo.scaleX;
+    newinfo.scaleY := hwJam.FEntries[i].FInfo.scaleY;
+    newinfo.scaleFlag := hwJam.FEntries[i].FInfo.scaleFlags;
+    newinfo.scaleFactor := hwJam.FEntries[i].FInfo.scaleFactor;
+
     newinfo.Unk := 0;
 
-//    newinfo.Idx08 := 0;
-//    newinfo.Idx0A := 0;
+    // newinfo.Idx08 := 0;
+    // newinfo.Idx0A := 0;
 
-    newinfo.Idx0E := 0;
+    newinfo.idx0e := 0;
 
     newinfo.Idx16 := 0;
     newinfo.Idx17 := 0;
@@ -1912,9 +1984,9 @@ begin
 
       newinfo.Idx18[j] := 0;
 
-    //detect transparency and if so do not create palettes
+    // detect transparency and if so do not create palettes
 
-    AddTexture(hwJam.FEntries[i].FTexture, newinfo, true);
+    AddTexture(hwJam.FEntries[i].FTexture, newinfo, True);
 
     for j := 0 to FEntries.Count - 1 do
 
@@ -1930,21 +2002,22 @@ procedure TJamFile.ConvertGPxJam(origJam: TJamFile; gp2Pal: boolean);
 var
   i, j: integer;
   newTexture: TJamEntry;
-  buildPal : boolean;
+  buildPal: boolean;
 begin
 
   if gp2Pal then
-    SetGpxPal(true)
+    SetGpxPal(True)
   else
-    SetGpxPal(false);
+    SetGpxPal(False);
 
-  buildPal := false;
+  buildPal := False;
   canvasHeight := origJam.FHeader.JamTotalHeight;
+  canvasWidth := 256;
 
-  CanvasBitmap.Height := canvasHeight;
+  // CanvasBitmap.Height := canvasHeight;
 
   FHeader.JamTotalHeight := origJam.FHeader.JamTotalHeight;
-  setLength(FRawData, 256 * origJam.FHeader.JamTotalHeight);
+  SetLength(FRawData, 256 * origJam.FHeader.JamTotalHeight);
 
   intJamMaxWidth := 256;
   intJamMaxHeight := origJam.FHeader.JamTotalHeight;
@@ -1952,12 +2025,13 @@ begin
   for i := 0 to origJam.FHeader.NumItems - 1 do
   begin
     if origJam.FEntries[i].PaletteSizeDiv4 > 1 then
-    buildPal := true;
-    AddTexture(origJam.FEntries[i].FTexture, origJam.FEntries[i].FInfo, buildPal);
-    buildPal := false;
+      buildPal := True;
+    AddTexture(origJam.FEntries[i].FTexture, origJam.FEntries[i].FInfo,
+      buildPal);
+    buildPal := False;
   end;
 
-  for j := 0 to origJam.FHeader.NumItems - 1  do
+  for j := 0 to origJam.FHeader.NumItems - 1 do
     with FEntries[j] do
       FInfo.JamFlags := origJam.FEntries[j].FInfo.JamFlags;
 
@@ -1965,21 +2039,21 @@ begin
 
 end;
 
-procedure TJamFile.ResizeJAM(originalHeight : integer);
+procedure TJamFile.ResizeJam(originalHeight: integer);
 var
   i, j: integer;
   newTexture: TJamEntry;
-  buildPal : boolean;
-  ratio : double;
-  tmpCanvas : TBitmap;
-  bmpPal : TBitmap;
+  buildPal: boolean;
+  ratio: double;
+  tmpCanvas: TBitmap;
+  bmpPal: TBitmap;
 begin
 
   ratio := 384 / originalHeight;
 
   canvasHeight := round(originalHeight * ratio);
 
-  CanvasBitmap.Height := canvasHeight;
+  // CanvasBitmap.Height := canvasHeight;
 
   intJamMaxHeight := canvasHeight;
 
@@ -1989,69 +2063,71 @@ begin
   begin
     with FEntries[i] do
     begin
-    if PaletteSizeDiv4 > 1 then
-    buildPal := true;
-    finfo.X := round(info.x * ratio);
-    finfo.Y := round(info.Y * ratio);
-    finfo.Height := round(info.Height * ratio);
-    finfo.Width := round(info.width * ratio);
+      if PaletteSizeDiv4 > 1 then
+        buildPal := True;
+      FInfo.X := round(Info.X * ratio);
+      FInfo.Y := round(Info.Y * ratio);
+      FInfo.Height := round(Info.Height * ratio);
+      FInfo.Width := round(Info.Width * ratio);
 
-    try
-      tmpCanvas.Assign(FOriginalTex);
-      tmpCanvas := StretchF(tmpCanvas, finfo.Width,  FInfo.height);
+      try
+        tmpCanvas.Assign(FOriginalTex);
+        tmpCanvas := StretchF(tmpCanvas, FInfo.Width, FInfo.Height);
 
-      if buildpal then
-        ftexture := GenerateGpxBMP(tmpCanvas, i, intSimplifyMethod, intSimplifyThreshold, intBlurThreshold, boolSimpifyAllPals, boolProtectTrans)
+        if buildPal then
+          FTexture := GenerateGPxBMP(tmpCanvas, i, intSimplifyMethod,
+            intSimplifyThreshold, intBlurThreshold, boolSimpifyAllPals,
+            boolProtectTrans)
         else
         begin
-        bmpPal := TBitmap.Create;
-         bmpPal.Assign(tmpCanvas);
-         bmpPal.PixelFormat := pf8bit;
-         bmpPal := CreateGPxPalBMP(tmpCanvas);
-         bmpPal.Palette := creategpxpal;
-         EncodeTexture(I, bmppal);
-         bmpPal.Free;
+          bmpPal := TBitmap.Create;
+          bmpPal.Assign(tmpCanvas);
+          bmpPal.PixelFormat := pf8bit;
+          bmpPal := CreateGPxPalBMP(tmpCanvas);
+          bmpPal.Palette := CreateGPxPal;
+          EncodeTexture(i, bmpPal);
+          bmpPal.free;
         end;
-     CachePaletteBMP(i);
-     finally
+        CachePaletteBMP(i);
+      finally
 
-    end;
-      buildPal := false;
+      end;
+      buildPal := False;
     end;
   end;
-  tmpCanvas.Free;
+  tmpCanvas.free;
   FHeader.JamTotalHeight := canvasHeight;
   SetLength(FRawData, 256 * canvasHeight);
 
 end;
 
-function TJamFile.GetIDX08_X(idx08: word): Byte;
+function TJamFile.GetIDX08_X(idx08: Word): Byte;
 begin
-//    result :=
+  // result :=
   Result := idx08 and $00FF; // lower byte
 end;
 
-function TJamFile.GetIDX08_Y(idx08: word): Byte;
+function TJamFile.GetIDX08_Y(idx08: Word): Byte;
 begin
   Result := (idx08 shr 8) and $00FF; // upper byte
 end;
 
-function TJamFile.SetIDX08(x,y : byte): byte;
+function TJamFile.SetIDX08(X, Y: Byte): Byte;
 begin
-  Result := (Word(y) shl 8) or x;
+  Result := (Word(Y) shl 8) or X;
 end;
 
-function TJamFile.GetIDX0aFlags(idx0a :word) : Byte;
+function TJamFile.GetIDX0aFlags(idx0a: Word): Byte;
 begin
   Result := idx0a and $00FF; // Lower byte = flags
 end;
 
-function TJamFile.GetIDX0aScale(idx0a: word) : Byte;
+function TJamFile.GetIDX0aScale(idx0a: Word): Byte;
 begin
   Result := (idx0a shr 8) and $00FF; // Upper byte = scale
 end;
 
-function TJamFile.SetIDX0a(flags, scale : byte) : word;
+function TJamFile.SetIDX0a(flags, scale: Byte): Word;
 begin
   Result := (Word(scale) shl 8) or flags;
 end;

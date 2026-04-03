@@ -3,7 +3,8 @@
 interface
 
 uses
-  Winapi.Windows, Winapi.Messages, System.SysUtils, System.Variants, System.Classes, Vcl.Graphics,
+  Winapi.Windows, Winapi.Messages, System.SysUtils, System.Variants,
+  System.Classes, Vcl.Graphics,
   Vcl.Controls, Vcl.Forms, Vcl.Dialogs, Vcl.StdCtrls, Vcl.ExtCtrls,
   Vcl.Samples.Spin, JamGeneral;
 
@@ -34,17 +35,16 @@ var
 implementation
 
 uses
-System.IOUtils, mainform, jampalette;
+  System.IOUtils, mainform, jampalette;
 
 {$R *.dfm}
-
 
 procedure TnewJamDialog.btnCreateClick(Sender: TObject);
 var
   FileName: string;
   InvalidChars: TArray<Char>;
   c: Char;
-  i : integer;
+  i: integer;
 begin
   // 1) Get & trim
   FileName := Trim(strName.Text);
@@ -55,117 +55,115 @@ begin
   end;
 
   // 2) Check for any invalid file‐name characters
-  InvalidChars := TPath.GetInvalidFileNameChars; // ['<', '>', ':', '"', '/', '\', '|', '?', '*', …]
+  InvalidChars := TPath.GetInvalidFileNameChars;
+  // ['<', '>', ':', '"', '/', '\', '|', '?', '*', …]
   for c in InvalidChars do
     if FileName.Contains(c) then
     begin
-      ShowMessage(Format('The character "%s" is not allowed in file names.', [c]));
+      ShowMessage
+        (Format('The character "%s" is not allowed in file names.', [c]));
       Exit;
     end;
 
   // 3) Prevent entering an extension
   if FileName.Contains('.') then
   begin
-    ShowMessage('Please do not include an extension; it will be added automatically.');
+    ShowMessage
+      ('Please do not include an extension; it will be added automatically.');
     Exit;
   end;
 
   // 4) Dispatch based on Jamtype.ItemIndex
-  case RadioJamtype.ItemIndex of
+  case radioJamType.ItemIndex of
     0:
-    begin
-    for I := 0 to 255 do
-    GPXPal[I] := Gp2Pal[I];
+      begin
+        for i := 0 to 255 do
+          GPXPal[i] := Gp2Pal[i];
 
+        boolGP2JAM := true;
+        boolGP3JAM := false;
+        boolHWJAM := false;
+        boolJipMode := false;
+        jamtype := jamGP2;
 
-
-    boolGP2JAM := true;
-    boolGP3JAM := false;
-    boolHWJAM := false;
-    boolJipMode := false;
-    jamtype := jamGP2;
-
-    formmain.NewJam(filename,false,intheight.value);
-    end;
+        formmain.NewJam(FileName, false, intHeight.value);
+      end;
     1:
-    begin
-      for I := 0 to 255 do
-    GPXPal[I] := Gp3Pal[I];
+      begin
+        for i := 0 to 255 do
+          GPXPal[i] := Gp3Pal[i];
 
-    boolGP3JAM := true;
-    jamtype := jamGP3SW;
-    boolGP2JAM := false;
-    boolHWJAM := false;
-    boolJipMode := false;
+        boolGP3JAM := true;
+        jamtype := jamGP3SW;
+        boolGP2JAM := false;
+        boolHWJAM := false;
+        boolJipMode := false;
 
-     formmain.NewJam(filename,false,intheight.value);
-    end;
+        formmain.NewJam(FileName, false, intHeight.value);
+      end;
 
     2:
-    begin
-    jamtype := jamGP3HW;
+      begin
+        jamtype := jamGP3HW;
 
+        boolHWJAM := true;
 
-    boolHWJAM := true;
+        boolGP3JAM := false;
 
+        boolGP2JAM := false;
 
-    boolGP3JAM := false;
+        boolJipMode := false;
+        formmain.NewJam(FileName, true, intHeight.value);
 
-    boolGP2JAM := false;
+      end;
+    3:
+      begin
+        for i := 0 to 255 do
+          GPXPal[i] := Gp3Pal[i];
 
-    boolJipMode := false;
-    formmain.NewJam(filename,true,intheight.value);
+        boolJipMode := true;
+        boolGP3JAM := true;
 
-    end;
-    3: begin
-      for I := 0 to 255 do
-    GPXPal[I] := Gp3Pal[I];
+        boolGP2JAM := false;
+        boolHWJAM := false;
+        boolJipMode := false;
 
-    boolJipMode := true;
-    boolGP3JAM := true;
+        formmain.NewJam(FileName, false, intHeight.value);
 
-
-    boolGP2JAM := false;
-    boolHWJAM := false;
-    boolJipMode := false;
-
-    formmain.NewJam(filename,false,intheight.value);
-
-    end;
+      end;
 
   else
     ShowMessage('Please select a JAM type.');
   end;
-  newjamdialog.close;
+  newJamDialog.close;
 
 end;
 
 procedure TnewJamDialog.Button2Click(Sender: TObject);
 begin
-newjamdialog.Close;
+  newJamDialog.close;
 end;
 
 procedure TnewJamDialog.FormKeyDown(Sender: TObject; var Key: Word;
   Shift: TShiftState);
 begin
-if (Key = VK_RETURN) and (ActiveControl = strName) then
+  if (Key = VK_RETURN) and (ActiveControl = strName) then
   begin
-    Key := 0;                // consume it
+    Key := 0; // consume it
     btnCreate.Click;
   end;
 end;
 
 procedure TnewJamDialog.ResetForm;
 begin
-  strName.Text      := '';
-  intHeight.Value   := 256;
-  RadioJamtype.ItemIndex := 0; // e.g. GP2JAM
+  strName.Text := '';
+  intHeight.value := 256;
+  radioJamType.ItemIndex := 0; // e.g. GP2JAM
 end;
-
 
 procedure TnewJamDialog.FormShow(Sender: TObject);
 begin
-ResetForm;
+  ResetForm;
 end;
 
 end.

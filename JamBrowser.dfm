@@ -98,6 +98,16 @@ object JamBrowserFrm: TJamBrowserFrm
       Visible = False
       StyleName = 'Windows'
     end
+    object btnCancel: TButton
+      Left = 1112
+      Top = 9
+      Width = 75
+      Height = 25
+      Caption = 'Cancel'
+      TabOrder = 2
+      Visible = False
+      OnClick = btnCancelClick
+    end
   end
   object PanelFolders: TPanel
     Left = 0
@@ -136,7 +146,7 @@ object JamBrowserFrm: TJamBrowserFrm
         item
           Options = [coAllowClick, coEnabled, coParentBidiMode, coParentColor, coResizable, coShowDropMark, coVisible, coAutoSpring, coSmartResize, coAllowFocus, coEditable, coStyleColor]
           Position = 0
-          Width = 304
+          Width = 308
         end>
     end
   end
@@ -268,8 +278,6 @@ object JamBrowserFrm: TJamBrowserFrm
     OnItemImageDraw = jamListViewItemImageDraw
     OnItemImageDrawIsCustom = jamListViewItemImageDrawIsCustom
     OnItemSelectionChanged = jamListViewItemSelectionChanged
-    ExplicitWidth = 574
-    ExplicitHeight = 667
   end
   object SystemImages: TImageList
     Left = 164

@@ -2,8 +2,8 @@ object FormMain: TFormMain
   Left = 0
   Top = 0
   Caption = 'Jam Editor'
-  ClientHeight = 1083
-  ClientWidth = 1316
+  ClientHeight = 720
+  ClientWidth = 1258
   Color = clBtnFace
   Font.Charset = DEFAULT_CHARSET
   Font.Color = clWindowText
@@ -2127,7 +2127,7 @@ object FormMain: TFormMain
     Left = 300
     Top = 34
     Width = 4
-    Height = 1023
+    Height = 660
     StyleName = 'Windows'
     ExplicitTop = 33
     ExplicitHeight = 1045
@@ -2135,8 +2135,8 @@ object FormMain: TFormMain
   object ScrollBox1: TScrollBox
     Left = 304
     Top = 34
-    Width = 612
-    Height = 1023
+    Width = 592
+    Height = 660
     HorzScrollBar.Smooth = True
     HorzScrollBar.Tracking = True
     VertScrollBar.Smooth = True
@@ -2153,36 +2153,18 @@ object FormMain: TFormMain
     object ImageCanvas: TImage
       Left = 0
       Top = 0
-      Width = 512
+      Width = 256
       Height = 512
       PopupMenu = canvasPopupMenu
       Proportional = True
       OnMouseDown = ImageCanvasMouseDown
       OnMouseUp = ImageCanvasMouseUp
     end
-    object Button4: TButton
-      Left = 488
-      Top = 816
-      Width = 75
-      Height = 25
-      Caption = 'Button4'
-      TabOrder = 0
-      OnClick = Button4Click
-    end
-    object Button6: TButton
-      Left = 488
-      Top = 852
-      Width = 75
-      Height = 25
-      Caption = 'Button6'
-      TabOrder = 1
-      OnClick = Button6Click
-    end
   end
   object ToolBar1: TToolBar
     Left = 0
     Top = 0
-    Width = 1316
+    Width = 1258
     Height = 34
     AutoSize = True
     BorderWidth = 2
@@ -2548,8 +2530,8 @@ object FormMain: TFormMain
   object StatusBar1: TStatusBar
     AlignWithMargins = True
     Left = 3
-    Top = 1060
-    Width = 1310
+    Top = 697
+    Width = 1252
     Height = 20
     Panels = <
       item
@@ -2562,7 +2544,7 @@ object FormMain: TFormMain
     Left = 0
     Top = 34
     Width = 300
-    Height = 1023
+    Height = 660
     Margins.Left = 10
     Margins.Top = 10
     Margins.Right = 10
@@ -2582,7 +2564,7 @@ object FormMain: TFormMain
       Left = 10
       Top = 10
       Width = 280
-      Height = 1003
+      Height = 640
       Align = alClient
       BevelEdges = []
       DoubleBuffered = True
@@ -2600,10 +2582,10 @@ object FormMain: TFormMain
     end
   end
   object CategoryPanelGroup1: TCategoryPanelGroup
-    Left = 916
+    Left = 896
     Top = 34
-    Width = 400
-    Height = 1023
+    Width = 362
+    Height = 660
     VertScrollBar.Tracking = True
     Align = alRight
     DoubleBuffered = False
@@ -2623,7 +2605,7 @@ object FormMain: TFormMain
     TabOrder = 4
     StyleName = 'Windows'
     object panel_JAMCanvas: TCategoryPanel
-      Top = 1158
+      Top = 1184
       Height = 73
       Caption = 'JAM Canvas'
       DoubleBuffered = False
@@ -2636,7 +2618,7 @@ object FormMain: TFormMain
       object jam_Canvas: TPanel
         Left = 0
         Top = 0
-        Width = 368
+        Width = 330
         Height = 45
         Align = alTop
         AutoSize = True
@@ -2676,7 +2658,7 @@ object FormMain: TFormMain
       end
     end
     object panel_RCRControls: TCategoryPanel
-      Top = 1066
+      Top = 1092
       Height = 92
       Caption = 'RCR Controls'
       DoubleBuffered = False
@@ -2690,7 +2672,7 @@ object FormMain: TFormMain
         AlignWithMargins = True
         Left = 3
         Top = 3
-        Width = 362
+        Width = 324
         Height = 67
         Align = alTop
         AutoSize = True
@@ -2738,7 +2720,7 @@ object FormMain: TFormMain
     end
     object panel_PalEdit: TCategoryPanel
       Top = 817
-      Height = 249
+      Height = 275
       Caption = 'GP2/GP3 SW Palette Creation'
       DoubleBuffered = False
       ParentDoubleBuffered = False
@@ -2750,144 +2732,41 @@ object FormMain: TFormMain
         AlignWithMargins = True
         Left = 3
         Top = 3
-        Width = 362
-        Height = 225
+        Width = 324
+        Height = 235
         Align = alTop
         AutoSize = True
         BevelOuter = bvNone
-        BorderWidth = 10
+        BorderWidth = 5
         TabOrder = 0
         object Label2: TLabel
-          Left = 16
-          Top = 10
+          Left = 5
+          Top = 5
           Width = 166
           Height = 13
           Caption = 'Input Image Simplification Method:'
           StyleName = 'Windows'
         end
         object Label1: TLabel
-          Left = 16
-          Top = 55
+          Left = 5
+          Top = 50
           Width = 62
           Height = 13
           Caption = 'Blur Amount:'
           StyleName = 'Windows'
         end
         object Label3: TLabel
-          Left = 119
-          Top = 55
+          Left = 175
+          Top = 50
           Width = 90
           Height = 13
           Caption = 'Simplify Threshold:'
           StyleName = 'Windows'
         end
-        object panel_PalCreation: TPanel
-          Left = 10
-          Top = 101
-          Width = 342
-          Height = 114
-          Align = alBottom
-          BevelOuter = bvNone
-          TabOrder = 5
-          object btnGenPal: TButton
-            Left = 8
-            Top = 17
-            Width = 144
-            Height = 25
-            Hint = 'Generate Palettes for the selected JAM - using above settings'
-            Caption = 'Generate Selected Palettes'
-            Enabled = False
-            TabOrder = 0
-            StyleName = 'Windows'
-            OnClick = btnGenPalClick
-          end
-          object btnPal0: TButton
-            Left = 6
-            Top = 78
-            Width = 70
-            Height = 25
-            Caption = 'Pal1'
-            Enabled = False
-            TabOrder = 1
-            StyleName = 'Windows'
-            OnClick = btnPal0Click
-          end
-          object btnPal1: TButton
-            Left = 95
-            Top = 78
-            Width = 70
-            Height = 25
-            Caption = 'Pal2'
-            Enabled = False
-            TabOrder = 2
-            StyleName = 'Windows'
-            OnClick = btnPal1Click
-          end
-          object btnPal2: TButton
-            Left = 184
-            Top = 78
-            Width = 70
-            Height = 27
-            Caption = 'Pal3'
-            Enabled = False
-            TabOrder = 3
-            StyleName = 'Windows'
-            OnClick = btnPal2Click
-          end
-          object btnPal3: TButton
-            Left = 274
-            Top = 78
-            Width = 70
-            Height = 25
-            Caption = 'Pal4'
-            Enabled = False
-            TabOrder = 4
-            StyleName = 'Windows'
-            OnClick = btnPal3Click
-          end
-          object btnRegenAllPals: TButton
-            Left = 8
-            Top = 47
-            Width = 144
-            Height = 25
-            Hint = 
-              'Regenerate all palettes in the JAM - this includes textures that' +
-              ' currently do not have local palettes'
-            Caption = 'Regenerate All Palettes'
-            Enabled = False
-            TabOrder = 5
-            StyleName = 'Windows'
-            OnClick = btnRegenAllPalsClick
-          end
-          object btnRemoveAllPals: TButton
-            Left = 190
-            Top = 47
-            Width = 155
-            Height = 25
-            Hint = 'Remove local palette'
-            HelpType = htKeyword
-            Caption = 'Remove All Palettes'
-            Enabled = False
-            TabOrder = 6
-            OnClick = btnRemoveAllPalsClick
-          end
-          object btnRemovePal: TButton
-            Left = 190
-            Top = 17
-            Width = 155
-            Height = 25
-            Hint = 'Remove palette information for selected texture'
-            Caption = 'Remove Selected Palettes'
-            Enabled = False
-            TabOrder = 7
-            StyleName = 'Windows'
-            OnClick = btnRemovePalClick
-          end
-        end
         object comboSimpMethod: TComboBox
-          Left = 16
-          Top = 29
-          Width = 201
+          Left = 5
+          Top = 24
+          Width = 300
           Height = 21
           Hint = 
             'Method to simplify texture - depending on scenario/texture some ' +
@@ -2904,10 +2783,10 @@ object FormMain: TFormMain
             'Neighbour Threshold (Usually best)')
         end
         object chkBoxSimpPal: TCheckBox
-          Left = 230
-          Top = 30
+          Left = 188
+          Top = 105
           Width = 136
-          Height = 18
+          Height = 27
           Hint = 
             'Apply a simplification process on each palette - can help ensure' +
             ' fidelity across all pals'
@@ -2916,10 +2795,10 @@ object FormMain: TFormMain
           StyleName = 'Windows'
         end
         object chkBoxTrans: TCheckBox
-          Left = 230
-          Top = 54
+          Left = 5
+          Top = 105
           Width = 136
-          Height = 18
+          Height = 27
           Hint = 
             'If the texture has transparency, do not apply a blur to the matt' +
             'e. You may want to soften mattes for trees for example'
@@ -2928,8 +2807,8 @@ object FormMain: TFormMain
           StyleName = 'Windows'
         end
         object numBox_BlurAmount: TNumberBox
-          Left = 16
-          Top = 74
+          Left = 5
+          Top = 69
           Width = 97
           Height = 21
           Hint = 'Amount of blur applied to the texture'
@@ -2943,8 +2822,8 @@ object FormMain: TFormMain
           OnChange = numBox_BlurAmountChange
         end
         object numBox_SimpThresh: TNumberBox
-          Left = 121
-          Top = 74
+          Left = 177
+          Top = 69
           Width = 89
           Height = 21
           Hint = 
@@ -2957,6 +2836,100 @@ object FormMain: TFormMain
           StyleName = 'Windows'
           UseMouseWheel = True
           OnChange = numBox_SimpThreshChange
+        end
+        object btnGenPal: TButton
+          Left = 1
+          Top = 141
+          Width = 144
+          Height = 25
+          Hint = 'Generate Palettes for the selected JAM - using above settings'
+          Caption = 'Generate Selected Palettes'
+          Enabled = False
+          TabOrder = 5
+          StyleName = 'Windows'
+          OnClick = btnGenPalClick
+        end
+        object btnPal0: TButton
+          Left = 1
+          Top = 203
+          Width = 70
+          Height = 25
+          Caption = 'Pal1'
+          Enabled = False
+          TabOrder = 6
+          StyleName = 'Windows'
+          OnClick = btnPal0Click
+        end
+        object btnPal1: TButton
+          Left = 86
+          Top = 203
+          Width = 70
+          Height = 25
+          Caption = 'Pal2'
+          Enabled = False
+          TabOrder = 7
+          StyleName = 'Windows'
+          OnClick = btnPal1Click
+        end
+        object btnPal2: TButton
+          Left = 162
+          Top = 203
+          Width = 70
+          Height = 27
+          Caption = 'Pal3'
+          Enabled = False
+          TabOrder = 8
+          StyleName = 'Windows'
+          OnClick = btnPal2Click
+        end
+        object btnPal3: TButton
+          Left = 238
+          Top = 203
+          Width = 70
+          Height = 25
+          Caption = 'Pal4'
+          Enabled = False
+          TabOrder = 9
+          StyleName = 'Windows'
+          OnClick = btnPal3Click
+        end
+        object btnRegenAllPals: TButton
+          Left = 1
+          Top = 172
+          Width = 144
+          Height = 25
+          Hint = 
+            'Regenerate all palettes in the JAM - this includes textures that' +
+            ' currently do not have local palettes'
+          Caption = 'Regenerate All Palettes'
+          Enabled = False
+          TabOrder = 10
+          StyleName = 'Windows'
+          OnClick = btnRegenAllPalsClick
+        end
+        object btnRemoveAllPals: TButton
+          Left = 153
+          Top = 172
+          Width = 155
+          Height = 25
+          Hint = 'Remove local palette'
+          HelpType = htKeyword
+          Caption = 'Remove All Palettes'
+          Enabled = False
+          TabOrder = 11
+          OnClick = btnRemoveAllPalsClick
+        end
+        object btnRemovePal: TButton
+          Left = 153
+          Top = 141
+          Width = 155
+          Height = 25
+          Hint = 'Remove palette information for selected texture'
+          Caption = 'Remove Selected Palettes'
+          Enabled = False
+          TabOrder = 12
+          StyleName = 'Windows'
+          OnClick = btnRemovePalClick
         end
       end
     end
@@ -2974,7 +2947,7 @@ object FormMain: TFormMain
       object panel_TexScaling: TPanel
         Left = 0
         Top = 0
-        Width = 368
+        Width = 330
         Height = 206
         Align = alTop
         AutoSize = True
@@ -2983,7 +2956,7 @@ object FormMain: TFormMain
         TabOrder = 0
         Visible = False
         object Label13: TLabel
-          Left = 6
+          Left = 5
           Top = 15
           Width = 69
           Height = 13
@@ -2999,16 +2972,16 @@ object FormMain: TFormMain
           WordWrap = True
         end
         object Label15: TLabel
-          Left = 6
+          Left = 5
           Top = 44
           Width = 63
           Height = 13
           Caption = 'Scale Factor:'
         end
         object scaleFlags: TCheckListBox
-          Left = 6
+          Left = 5
           Top = 73
-          Width = 355
+          Width = 323
           Height = 123
           Columns = 2
           CheckBoxPadding = 1
@@ -3084,7 +3057,7 @@ object FormMain: TFormMain
       object panel_flags: TPanel
         Left = 0
         Top = 0
-        Width = 368
+        Width = 330
         Height = 142
         Align = alClient
         AutoSize = True
@@ -3092,9 +3065,9 @@ object FormMain: TFormMain
         BorderWidth = 10
         TabOrder = 0
         object tex_flags: TCheckListBox
-          Left = 1
+          Left = 5
           Top = 10
-          Width = 344
+          Width = 324
           Height = 124
           Columns = 2
           CheckBoxPadding = 1
@@ -3136,7 +3109,7 @@ object FormMain: TFormMain
       object panel_TexProperties_Generic: TPanel
         Left = 0
         Top = 0
-        Width = 368
+        Width = 330
         Height = 105
         Align = alTop
         AutoSize = True
@@ -3181,7 +3154,7 @@ object FormMain: TFormMain
         object tex_height: TSpinEdit
           Left = 227
           Top = 73
-          Width = 121
+          Width = 102
           Height = 22
           Enabled = False
           MaxLength = 3
@@ -3196,7 +3169,7 @@ object FormMain: TFormMain
         object tex_ID: TSpinEdit
           Left = 52
           Top = 10
-          Width = 121
+          Width = 101
           Height = 22
           Enabled = False
           MaxValue = 32767
@@ -3210,7 +3183,7 @@ object FormMain: TFormMain
         object tex_width: TSpinEdit
           Left = 53
           Top = 72
-          Width = 121
+          Width = 100
           Height = 22
           Enabled = False
           MaxValue = 512
@@ -3224,7 +3197,7 @@ object FormMain: TFormMain
         object tex_X: TSpinEdit
           Left = 53
           Top = 44
-          Width = 121
+          Width = 100
           Height = 22
           Enabled = False
           MaxValue = 512
@@ -3238,7 +3211,7 @@ object FormMain: TFormMain
         object tex_Y: TSpinEdit
           Left = 227
           Top = 41
-          Width = 121
+          Width = 102
           Height = 22
           Enabled = False
           MaxValue = 2048
@@ -3265,7 +3238,7 @@ object FormMain: TFormMain
       object panel_TexPreview: TPanel
         Left = 0
         Top = 0
-        Width = 368
+        Width = 330
         Height = 256
         Align = alTop
         AutoSize = True
@@ -3276,7 +3249,7 @@ object FormMain: TFormMain
         object ImageEntry: TImage
           Left = 1
           Top = 1
-          Width = 366
+          Width = 328
           Height = 233
           Align = alClient
           AutoSize = True
@@ -3289,7 +3262,7 @@ object FormMain: TFormMain
         object panel_PalPreview: TPanel
           Left = 1
           Top = 234
-          Width = 366
+          Width = 328
           Height = 16
           Align = alBottom
           TabOrder = 0
@@ -3297,7 +3270,7 @@ object FormMain: TFormMain
           object PaintBoxPalette: TPaintBox
             Left = 1
             Top = 1
-            Width = 364
+            Width = 326
             Height = 14
             Align = alClient
             OnPaint = PaintBoxPalettePaint
@@ -3315,6 +3288,7 @@ object FormMain: TFormMain
     Top = 644
   end
   object dlgSaveJam: TSaveDialog
+    DefaultExt = 'jam'
     Filter = 'jam|*.jam|jip|*.jip'
     Left = 686
     Top = 624
@@ -3358,6 +3332,7 @@ object FormMain: TFormMain
     Top = 708
   end
   object exportDialog: TSaveDialog
+    DefaultExt = 'bmp'
     Filter = 'bitmap|*.bmp'
     Left = 596
     Top = 700
@@ -3365,7 +3340,7 @@ object FormMain: TFormMain
   object MainMenu1: TMainMenu
     OnChange = MainMenu1Change
     Left = 348
-    Top = 148
+    Top = 100
     object File1: TMenuItem
       Caption = 'File'
       object New1: TMenuItem
@@ -3516,6 +3491,7 @@ object FormMain: TFormMain
         Caption = 'Import Canvas'
         Enabled = False
         Hint = 'Import image to replace current canvas'
+        OnClick = mainMenuImportCanvasClick
       end
       object N8: TMenuItem
         Caption = '-'
@@ -34330,7 +34306,7 @@ object FormMain: TFormMain
           end>
       end>
     Left = 600
-    Top = 392
+    Top = 368
   end
   object timer_JamRedrawPals: TTimer
     Interval = 250
@@ -46277,7 +46253,7 @@ object FormMain: TFormMain
       end>
     ImageCollection = treeimagecollection
     PreserveItems = True
-    Left = 384
-    Top = 440
+    Left = 448
+    Top = 200
   end
 end

@@ -63,8 +63,8 @@ object JamBatchForm: TJamBatchForm
       OnClick = btnAddFileClick
     end
     object btnDel: TButton
-      Left = 9
-      Top = 239
+      Left = 240
+      Top = 175
       Width = 119
       Height = 25
       Caption = 'Remove Selected'
@@ -286,12 +286,21 @@ object JamBatchForm: TJamBatchForm
       OnChange = edtFilenameChange
     end
     object chkScanAllFolders: TCheckBox
-      Left = 254
-      Top = 175
+      Left = 9
+      Top = 224
       Width = 163
-      Height = 17
+      Height = 24
       Caption = 'Scan All child folders?'
       TabOrder = 11
+    end
+    object btnConvertTrack: TButton
+      Left = 365
+      Top = 175
+      Width = 156
+      Height = 25
+      Caption = 'Convert Track JAMs'
+      TabOrder = 12
+      OnClick = btnConvertTrackClick
     end
   end
   object Panel1: TPanel
@@ -373,8 +382,8 @@ object JamBatchForm: TJamBatchForm
   end
   object jamBatchPopup: TPopupMenu
     OnPopup = jamBatchPopupPopup
-    Left = 664
-    Top = 700
+    Left = 344
+    Top = 660
     object AddFiles01: TMenuItem
       Caption = 'Add File'
       OnClick = btnAddFileClick
@@ -391,5 +400,10 @@ object JamBatchForm: TJamBatchForm
       Enabled = False
       OnClick = DeleteItems1Click
     end
+  end
+  object openTrack: TOpenDialog
+    Filter = 'GP3 Track (*.dat)|*.dat|All files (*.*)|*.*'
+    Left = 512
+    Top = 660
   end
 end

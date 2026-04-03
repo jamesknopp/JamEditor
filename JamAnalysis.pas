@@ -3,15 +3,16 @@ unit JamAnalysis;
 interface
 
 uses
-  Winapi.Windows, Winapi.Messages, System.SysUtils, System.StrUtils, System.Variants, System.Classes, Vcl.Graphics,
-  Vcl.Controls, Vcl.Forms, Vcl.Dialogs, MPCommonObjects, EasyListview,System.Threading, System.IOUtils,
+  Winapi.Windows, Winapi.Messages, System.SysUtils, System.StrUtils,
+  System.Variants, System.Classes, Vcl.Graphics,
+  Vcl.Controls, Vcl.Forms, Vcl.Dialogs, MPCommonObjects, EasyListview,
+  System.Threading, System.IOUtils, System.SyncObjs,
   Vcl.ExtCtrls, JamSW, JamHW, JamPalette, JamGeneral, jamPaletteDetector,
-  Vcl.StdCtrls, System.Math;
-
+  Vcl.StdCtrls, System.Math, Vcl.ComCtrls;
 
 type
 
-TJamItem = class
+  TJamItem = class
     Path: string;
     JamInfo: TJamEntryInfo;
     Thumb: TBitmap;
@@ -26,16 +27,31 @@ type
     Panel1: TPanel;
     jamlistview: TEasyListview;
     Panel2: TPanel;
-    Button1: TButton;
     Splitter1: TSplitter;
+    GroupBox1: TGroupBox;
     texPreview: TImage;
-    procedure Button1Click(Sender: TObject);
+    scanGroup: TGroupBox;
+    strFolder: TEdit;
+    Label1: TLabel;
+    Button2: TButton;
+    chkSubfolders: TCheckBox;
+    btnScanFolder: TButton;
+    btnScanGP2: TButton;
+    btnScanGP3: TButton;
+    scanGP32K: TButton;
+    chkSoftware: TCheckBox;
+    chkHardware: TCheckBox;
+    ProgressBar: TProgressBar;
+    jamLoading: TLabel;
+    Button1: TButton;
+    chkClearList: TCheckBox;
+    procedure btnScanFolderClick(Sender: TObject);
     procedure FormCreate(Sender: TObject);
     procedure jamlistviewItemImageDraw(Sender: TCustomEasyListview;
       Item: TEasyItem; Column: TEasyColumn; ACanvas: TCanvas;
       const RectArray: TEasyRectArrayObject; AlphaBlender: TEasyAlphaBlender);
-//    procedure jamlistviewItemImageDrawIsCustom(Sender: TCustomEasyListview;
-//      Item: TEasyItem; Column: TEasyColumn; var IsCustom: Boolean);
+    // procedure jamlistviewItemImageDrawIsCustom(Sender: TCustomEasyListview;
+    // Item: TEasyItem; Column: TEasyColumn; var IsCustom: Boolean);
     function jamlistviewItemCompare(Sender: TCustomEasyListview;
       Column: TEasyColumn; Group: TEasyGroup; Item1, Item2: TEasyItem;
       var DoDefault: Boolean): Integer;
@@ -44,26 +60,33 @@ type
     procedure jamlistviewItemSelectionChanged(Sender: TCustomEasyListview;
       Item: TEasyItem);
     procedure FormDestroy(Sender: TObject);
-    procedure jamlistviewItemImageDrawIsCustom(
-  Sender: TCustomEasyListview; Item: TEasyItem; Column: TEasyColumn;
-  var IsCustom: Boolean);
+    procedure jamlistviewItemImageDrawIsCustom(Sender: TCustomEasyListview;
+      Item: TEasyItem; Column: TEasyColumn; var IsCustom: Boolean);
+    procedure btnScanGP2Click(Sender: TObject);
+    procedure btnScanGP3Click(Sender: TObject);
+    procedure scanGP32KClick(Sender: TObject);
+    procedure Button2Click(Sender: TObject);
+    procedure strFolderChange(Sender: TObject);
+    procedure Button1Click(Sender: TObject);
 
   private
-    { Private declarations }
+    FLoadTask: ITask;
+    // FCTS: ICancellationTokenSource;
+    // procedure CancelLoad(const WaitMillis: Integer = 2000);
   public
     FileList: TStringList;
     procedure QueueJamItem(const FilePath: string);
     procedure LoadFromFolder(const Folder: string);
-    procedure LoadImagesWorker(const Folder: string);
+    procedure LoadImagesWorker(const Folder: string; subfolders: Boolean);
 
   end;
 
 var
   frmJamAnalysis: TfrmJamAnalysis;
-
+  strFolderToScan: string;
+  cancelJob: Boolean;
 
 implementation
-
 
 {$R *.dfm}
 
@@ -73,24 +96,89 @@ begin
   inherited;
 end;
 
+procedure TfrmJamAnalysis.btnScanGP3Click(Sender: TObject);
+begin
+  if (chkSoftware.Checked = false) and (chkHardware.Checked = false) then
+  begin
+    showMessage
+      ('Select whether you want to scan for software and/or hardware JAMs');
+    exit;
+  end;
 
+  if strGP3Location.Length > 0 then
+    LoadImagesWorker(strGP3Location, chkSubfolders.Checked)
+  else
+    showMessage('GP3 Location not defined - go to options to locate GP3');
+end;
 
 procedure TfrmJamAnalysis.Button1Click(Sender: TObject);
 begin
-LoadImagesWorker('D:\gp3\Gp3jamsH');
-LoadImagesWorker('D:\gp3\Gp3jams');
-LoadImagesWorker('D:\gp2\Gamejams');
+  cancelJob := true;
+end;
+
+procedure TfrmJamAnalysis.Button2Click(Sender: TObject);
+var
+  dlg: TFileOpenDialog;
+  pickedDir: string;
+  missing: TArray<string>;
+  i: Integer;
+  missingString: string;
+begin
+  dlg := TFileOpenDialog.Create(nil);
+  try
+    dlg.Options := dlg.Options + [fdoPickFolders, fdoPathMustExist];
+    dlg.Title := 'Select folder to browse';
+    if not dlg.Execute then
+      exit;
+
+    pickedDir := dlg.FileName; // the folder the user chose
+
+    strFolder.Text := pickedDir;
+    strFolderToScan := pickedDir;
+
+  finally
+    dlg.Free;
+  end;
+
+end;
+
+procedure TfrmJamAnalysis.btnScanFolderClick(Sender: TObject);
+begin
+  if strFolderToScan.Length > 0 then
+    if DirectoryExists(strFolderToScan) then
+      LoadImagesWorker(strFolderToScan, chkSubfolders.Checked)
+    else
+      showMessage('Directory does not exist')
+  else
+    showMessage('Please select a valid folder to scan');
+
+end;
+
+procedure TfrmJamAnalysis.btnScanGP2Click(Sender: TObject);
+begin
+  if (chkSoftware.Checked = false) and (chkHardware.Checked = false) then
+  begin
+    showMessage
+      ('Select whether you want to scan for software and/or hardware JAMs');
+    exit;
+  end;
+
+  if strGP2Location.Length > 0 then
+    LoadImagesWorker(strGP2Location, chkSubfolders.Checked)
+  else
+    showMessage('GP2 Location not defined - go to options to locate GP2');
 end;
 
 procedure TfrmJamAnalysis.FormCreate(Sender: TObject);
 begin
-filelist := TStringlist.Create;
+  FileList := TStringList.Create;
+  cancelJob := false;
 end;
 
 procedure TfrmJamAnalysis.FormDestroy(Sender: TObject);
 begin
-  jamListView.items.Clear;
-  filelist.free;
+  jamlistview.items.Clear;
+  FileList.Free;
 end;
 
 function TfrmJamAnalysis.jamlistviewItemCompare(Sender: TCustomEasyListview;
@@ -111,16 +199,16 @@ begin
     if Column.SortDirection = esdDescending then
       Result := -Result;
 
-    DoDefault := False; // prevent default sorting
+    DoDefault := false; // prevent default sorting
   end
   else
-    DoDefault := True; // fall back to default sort for other columns
+    DoDefault := true; // fall back to default sort for other columns
 end;
 
 procedure TfrmJamAnalysis.jamlistviewItemFreeing(Sender: TCustomEasyListview;
   Item: TEasyItem);
 begin
-if Assigned(Item.data) then
+  if Assigned(Item.data) then
   begin
     TJamItem(Item.data).Free;
     Item.data := nil;
@@ -131,31 +219,35 @@ procedure TfrmJamAnalysis.jamlistviewItemImageDraw(Sender: TCustomEasyListview;
   Item: TEasyItem; Column: TEasyColumn; ACanvas: TCanvas;
   const RectArray: TEasyRectArrayObject; AlphaBlender: TEasyAlphaBlender);
 var
-img : TBitmap;
+  img: TBitmap;
 begin
   img := TJamItem(Item.data).Thumb;
   AlphaBlender.Blend(Sender, Item, ACanvas, RectArray.IconRect, img);
 end;
 
-procedure TfrmJamAnalysis.jamlistviewItemImageDrawIsCustom(
-  Sender: TCustomEasyListview; Item: TEasyItem; Column: TEasyColumn;
+procedure TfrmJamAnalysis.jamlistviewItemImageDrawIsCustom
+  (Sender: TCustomEasyListview; Item: TEasyItem; Column: TEasyColumn;
   var IsCustom: Boolean);
 begin
 
-isCustom := true;
+  IsCustom := true;
 
 end;
 
-procedure TfrmJamAnalysis.jamlistviewItemSelectionChanged(
-  Sender: TCustomEasyListview; Item: TEasyItem);
+procedure TfrmJamAnalysis.jamlistviewItemSelectionChanged
+  (Sender: TCustomEasyListview; Item: TEasyItem);
 begin
-    texpreview.Picture.Bitmap := TJamItem(Item.data).Thumb;
+  texPreview.Picture.Bitmap := TJamItem(Item.data).Thumb;
 end;
 
 procedure TfrmJamAnalysis.LoadFromFolder(const Folder: string);
 begin
 
-TTask.Run(procedure begin LoadImagesWorker(Folder)end);
+  TTask.Run(
+    procedure
+    begin
+      LoadImagesWorker(Folder, chkSubfolders.Checked)
+    end);
 end;
 
 procedure TfrmJamAnalysis.QueueJamItem(const FilePath: string);
@@ -164,185 +256,211 @@ var
   HWJamFile: THWJamFile;
   Thumb: TBitmap;
   Node: TJamItem;
-  jamType: string;
+  JamType: string;
   Height, Width, numTexs: Integer;
   jamPal: TJamType;
   Item: TEasyItem;
-  filename : string;
+  FileName: string;
 
 begin
   Thumb := nil;
   Node := nil;
   try
-TThread.Queue(nil,procedure
+    TThread.Queue(nil,
+      procedure
 
-    var
-  i,j,k : integer;
+      var
+        i, j, k: Integer;
 
-begin
+      begin
 
-if lowercase(TPath.GetFileName(filepath)) = 'barm.jam'  then exit;
-if lowercase(TPath.GetFileName(filepath)) = 'bars.jam' then exit;
-if lowercase(TPath.GetFileName(filepath)) = 'hun_s1.jam' then exit;
-if lowercase(TPath.GetFileName(filepath)) = 'mhill.jam' then exit;
-if lowercase(TPath.GetFileName(filepath)) = 'shill.jam' then exit;
+        if lowercase(TPath.GetFileName(FilePath)) = 'barm.jam' then
+          exit;
+        if lowercase(TPath.GetFileName(FilePath)) = 'bars.jam' then
+          exit;
+        if lowercase(TPath.GetFileName(FilePath)) = 'hun_s1.jam' then
+          exit;
+        if lowercase(TPath.GetFileName(FilePath)) = 'mhill.jam' then
+          exit;
+        if lowercase(TPath.GetFileName(FilePath)) = 'shill.jam' then
+          exit;
 
-    // Detect and load JAM or JIP
-    if isHWJAM(FilePath) then
-    begin
-      HWJamFile := THWJamFile.Create;
-      try
-        HWJamFile.LoadFromFile(FilePath);
-        jamType := 'Hardware JAM File';
-
-        for j := 0 to HWJamFile.FHeader.NumItems-1 do
-          begin
-          node := TJamItem.create;
-          node.Path := filepath;
-          node.JamType := jamtype;
-          node.JamInfo.X := HWJamFile.FEntries[j].FInfo.x;
-          node.JamInfo.Y := HWJamFile.FEntries[j].FInfo.Y;
-          node.jaminfo.Height := HWJamFile.FEntries[j].FInfo.Height;
-          node.jaminfo.JamId := HWJamFile.FEntries[j].FInfo.JamID;
-          node.JamInfo.JamFlags := HWJamFile.FEntries[j].FInfo.jamflags;
-
-          node.thumb := TBitmap.Create;
-          node.Thumb.height := HWJamFile.FEntries[j].finfo.Height;
-          node.Thumb.width := HWJamFile.FEntries[j].finfo.width;
-
-          node.thumb.Canvas.draw(0,0,HWJamFile.FEntries[j].FTexture);
-
-          item := jamlistview.items.add(node);
-
-          item.captions[1] := node.Path;
-          item.captions[2] := inttostr(node.JamInfo.JamId);
-          item.captions[3] := inttostr(node.JamInfo.ImagePtr);
-          item.captions[4] := inttostr(node.JamInfo.PaletteSizeDiv4);
-
-          for k := 0 to 15 do
-          begin
-          item.captions[5+k] := inttostr(FlagToInt(UnPackFlag(node.jaminfo.JamFlags,k)));
-          end;
-
-//          item.captions[21] := inttostr(jamfile.GetIDX08_X(node.jaminfo.Idx08));
-//          item.captions[22] := inttostr(jamfile.GetIDX08_Y(node.jaminfo.Idx08));
-//          item.captions[23] := inttostr(jamfile.GetIDX0aScale(node.jaminfo.Idx0a));
-//          for k := 0 to 7 do
-//          begin
-//          item.captions[24+k] := inttostr(FlagToInt(UnPackFlag(jamfile.GetIDX0aFlags(node.jaminfo.Idx0A),k)));
-//          end;
-//          item.captions[32] := inttostr(node.JamInfo.Unk);
-//          item.captions[33] := inttostr(node.JamInfo.Idx0E);
-//
-//          for k := 0 to 7 do
-//          item.captions[k] := inttostr(node.JamInfo.Idx18[k]);
-          end;
-
-      finally
-        HWJamFile.Free;
-      end;
-    end
-    else
-    begin
-      JamFile := TJamFile.Create;
-      try
-        jamPal := TJamPaletteDetector.Instance.Detect(FilePath, true);
-        case jamPal of
-          jamGP2:  for i := 0 to 255 do GPXPal[i] := Gp2Pal[i];
-          jamGP3SW: for i := 0 to 255 do GPXPal[i] := Gp3Pal[i];
-        end;
-
-        JamFile.LoadFromFile(FilePath, true);
-        jamType := IfThen(TPath.GetExtension(FilePath) = '.jip', 'Software JIP File', 'Software JAM File');
-
-        for j := 0 to JamFile.FHeader.NumItems-1 do
+        // Detect and load JAM or JIP
+        if isHWJAM(FilePath) then
         begin
-          node := TJamItem.create;
-          node.Path := filepath;
-          node.JamType := jamtype;
-          node.JamInfo := jamfile.FEntries[j].FInfo;
-          node.Thumb := TBitmap.create;
-          node.thumb.width := jamfile.FEntries[j].Info.Width;
-          node.thumb.height := jamfile.FEntries[j].Info.height;
-          node.Thumb.Canvas.Draw(0,0,jamfile.FEntries[j].FTexture);
-
-          item := jamlistview.items.add(node);
-
-          item.captions[1] := node.Path;
-          item.captions[2] := inttostr(node.JamInfo.JamId);
-          item.captions[3] := inttostr(node.JamInfo.ImagePtr);
-          item.captions[4] := inttostr(node.JamInfo.PaletteSizeDiv4);
-
-          for k := 0 to 15 do
+          if chkHardware.Checked then
           begin
-          item.captions[5+k] := inttostr(FlagToInt(UnPackFlag(node.jaminfo.JamFlags,k)));
+            HWJamFile := THWJamFile.Create;
+            try
+              HWJamFile.LoadFromFile(FilePath);
+              JamType := 'Hardware JAM File';
+
+              for j := 0 to HWJamFile.FHeader.NumItems - 1 do
+              begin
+                Node := TJamItem.Create;
+                Node.Path := FilePath;
+                Node.JamType := JamType;
+                Node.JamInfo.X := HWJamFile.FEntries[j].FInfo.X;
+                Node.JamInfo.Y := HWJamFile.FEntries[j].FInfo.Y;
+                Node.JamInfo.Height := HWJamFile.FEntries[j].FInfo.Height;
+                Node.JamInfo.JamId := HWJamFile.FEntries[j].FInfo.JamId;
+                Node.JamInfo.JamFlags := HWJamFile.FEntries[j].FInfo.JamFlags;
+
+                Node.Thumb := TBitmap.Create;
+                Node.Thumb.Height := HWJamFile.FEntries[j].FInfo.Height;
+                Node.Thumb.Width := HWJamFile.FEntries[j].FInfo.Width;
+
+                Node.Thumb.Canvas.draw(0, 0, HWJamFile.FEntries[j].FTexture);
+
+                Item := jamlistview.items.add(Node);
+
+                Item.Captions[1] := Node.Path;
+                Item.Captions[2] := inttostr(Node.JamInfo.JamId);
+                Item.Captions[3] := inttostr(Node.JamInfo.ImagePtr);
+                Item.Captions[4] := inttostr(Node.JamInfo.PaletteSizeDiv4);
+
+                for k := 0 to 15 do
+                begin
+                  Item.Captions[5 + k] :=
+                    inttostr(FlagToInt(UnPackFlag(Node.JamInfo.JamFlags, k)));
+                end;
+
+                Item.Captions[21] := inttostr(Node.JamInfo.scaleX);
+                Item.Captions[22] := inttostr(Node.JamInfo.scaley);
+                Item.Captions[23] := inttostr(Node.JamInfo.scaleFactor);
+                for k := 0 to 7 do
+                begin
+                  Item.Captions[24 + k] :=
+                    inttostr(FlagToInt(UnPackFlag(Node.JamInfo.scaleFlag, k)));
+                end;
+
+              end;
+
+            finally
+              HWJamFile.Free;
+            end;
           end;
-
-//          item.captions[21] := inttostr(jamfile.GetIDX08_X(node.jaminfo.Idx08));
-//          item.captions[22] := inttostr(jamfile.GetIDX08_Y(node.jaminfo.Idx08));
-//          item.captions[23] := inttostr(jamfile.GetIDX0aScale(node.jaminfo.Idx0a));
-
-          item.captions[21] := inttostr(node.jaminfo.scaleX);
-          item.captions[22] := inttostr(node.jaminfo.scaley);
-          item.captions[23] := inttostr(node.jaminfo.scaleFactor);
-          for k := 0 to 7 do
+        end
+        else
+        begin
+          if chkSoftware.Checked then
           begin
-          item.captions[24+k] := inttostr(FlagToInt(UnPackFlag(node.JamInfo.scaleFlag,k)));
-//          item.captions[24+k] := inttostr(FlagToInt(UnPackFlag(jamfile.GetIDX0aFlags(node.jaminfo.Idx0A),k)));
-          end;
-          item.captions[32] := inttostr(node.JamInfo.Unk);
-          item.captions[33] := inttostr(node.JamInfo.Idx0E);
+            JamFile := TJamFile.Create;
+            try
+              jamPal := TJamPaletteDetector.Instance.Detect(FilePath, true);
+              case jamPal of
+                jamGP2:
+                  for i := 0 to 255 do
+                    GPXPal[i] := Gp2Pal[i];
+                jamGP3SW:
+                  for i := 0 to 255 do
+                    GPXPal[i] := Gp3Pal[i];
+              end;
 
-          for k := 0 to 7 do
-          item.captions[k+34] := inttostr(node.JamInfo.Idx18[k]);
+              JamFile.LoadFromFile(FilePath, true);
+              JamType := IfThen(TPath.GetExtension(FilePath) = '.jip',
+                'Software JIP File', 'Software JAM File');
+
+              for j := 0 to JamFile.FHeader.NumItems - 1 do
+              begin
+                Node := TJamItem.Create;
+                Node.Path := FilePath;
+                Node.JamType := JamType;
+                Node.JamInfo := JamFile.FEntries[j].FInfo;
+                Node.Thumb := TBitmap.Create;
+                Node.Thumb.Width := JamFile.FEntries[j].Info.Width;
+                Node.Thumb.Height := JamFile.FEntries[j].Info.Height;
+                Node.Thumb.Canvas.draw(0, 0, JamFile.FEntries[j].FTexture);
+
+                Item := jamlistview.items.add(Node);
+
+                Item.Captions[1] := Node.Path;
+                Item.Captions[2] := inttostr(Node.JamInfo.JamId);
+                Item.Captions[3] := inttostr(JamFile.FHeader.jamtotalheight);
+                Item.Captions[4] := inttostr(Node.JamInfo.PaletteSizeDiv4);
+
+                for k := 0 to 15 do
+                begin
+                  Item.Captions[5 + k] :=
+                    inttostr(FlagToInt(UnPackFlag(Node.JamInfo.JamFlags, k)));
+                end;
+
+                Item.Captions[21] := inttostr(Node.JamInfo.scaleX);
+                Item.Captions[22] := inttostr(Node.JamInfo.scaley);
+                Item.Captions[23] := inttostr(Node.JamInfo.scaleFactor);
+                for k := 0 to 7 do
+                begin
+                  Item.Captions[24 + k] :=
+                    inttostr(FlagToInt(UnPackFlag(Node.JamInfo.scaleFlag, k)));
+
+                end;
+                Item.Captions[32] := inttostr(Node.JamInfo.Unk);
+                Item.Captions[33] := inttostr(Node.JamInfo.Idx0E);
+
+                for k := 0 to 7 do
+                  Item.Captions[k + 34] := inttostr(Node.JamInfo.Idx18[k]);
+              end;
+            finally
+              JamFile.Free;
+            end;
+          end;
         end;
-      finally
-        JamFile.Free;
-      end;
-    end;end);
+      end);
 
     Node := nil; // prevent freeing in finally
   finally
     Thumb.Free;
     Node.Free;
   end;
-    jamListView.Sort.SortAll();
+  jamlistview.Sort.SortAll();
 end;
 
-procedure TfrmJamAnalysis.LoadImagesWorker(const Folder: string);
+procedure TfrmJamAnalysis.scanGP32KClick(Sender: TObject);
+begin
+  if (chkSoftware.Checked = false) and (chkHardware.Checked = false) then
+  begin
+    showMessage
+      ('Select whether you want to scan for software and/or hardware JAMs');
+    exit;
+  end;
+
+  if strGP32kLocation.Length > 0 then
+    LoadImagesWorker(strGP32kLocation, chkSubfolders.Checked)
+  else
+    showMessage
+      ('GP3 2000 Location not defined - go to options to locate GP3 2000');
+end;
+
+procedure TfrmJamAnalysis.strFolderChange(Sender: TObject);
+begin
+  strFolderToScan := strFolder.Text;
+end;
+
+procedure TfrmJamAnalysis.LoadImagesWorker(const Folder: string;
+subfolders: Boolean);
 var
   SR: TSearchRec;
-  NewList,CopiedList: TStringList;
+  NewList, CopiedList: TStringList;
   FileExt: string;
   i: Integer;
-  files : TArray<string>;
-  f : string;
+  files: TArray<string>;
+  f: string;
 begin
+  cancelJob := false;
 
-Files := TDirectory.Getfiles(folder, '*.jam',TSearchOption.soAllDirectories);
+  if subfolders then
+    files := TDirectory.Getfiles(Folder, '*.jam',
+      TSearchOption.soAllDirectories)
+  else
+    files := TDirectory.Getfiles(Folder, '*.jam',
+      TSearchOption.soTopDirectoryOnly);
 
   NewList := TStringList.Create;
   try
-  for f in files do
-  begin
-  newlist.add(f);
-  end;
-
-//    // Off-thread file scanning
-//    if FindFirst(Folder + '\*.*', faAnyFile, SR) = 0 then
-//    begin
-//      repeat
-//        if (SR.Attr and faDirectory = 0) then
-//        begin
-//          FileExt := LowerCase(ExtractFileExt(SR.Name));
-//          if (FileExt = '.jam') or (FileExt = '.jip') then
-//            if not SameText(SR.Name, 'shill.jam') then
-//              NewList.Add(Folder + '\' + SR.Name);
-//        end;
-//      until FindNext(SR) <> 0;
-//      FindClose(SR);
-//    end;
-
+    for f in files do
+    begin
+      NewList.add(f);
+    end;
 
     // Backup palette (off-thread is okay)
     for i := 0 to 255 do
@@ -351,50 +469,57 @@ Files := TDirectory.Getfiles(folder, '*.jam',TSearchOption.soAllDirectories);
     CopiedList := TStringList.Create;
     CopiedList.Assign(NewList);
 
-TThread.Queue(nil,procedure
+    TThread.Queue(nil,
+      procedure
       var
-        x: Integer;
+        X: Integer;
       begin
         try
-//          Self.jamListView.Items.Clear;
-          Self.FileList.Assign(copiedlist);
+          Self.jamlistview.items.Clear;
+          Self.FileList.Assign(CopiedList);
+          scanGroup.Enabled := false;
 
+          Self.ProgressBar.Max := Self.FileList.Count;
+          Self.ProgressBar.Position := 0;
+          Self.ProgressBar.Visible := true;
 
+          Self.jamLoading.Caption := format('Loading JAM %d of %d',
+            [Self.ProgressBar.Position, Self.ProgressBar.Max]);
 
-//          Self.ProgressBar.Max := Self.FileList.Count;
-//          Self.ProgressBar.Position := 0;
-//          Self.ProgressBar.Visible := True;
-//
-//          Self.jamLoading.Visible := True;
-//
-//          Self.FPendingThumbnails := Self.FileList.Count;
-//          Self.FLoadedThumbnails := 0;
+          Self.jamLoading.Visible := true;
 
-          for x := 0 to Self.FileList.Count - 1 do
+          for X := 0 to Self.FileList.Count - 1 do
           begin
-            Self.jamListView.BeginUpdate;
-            Self.QueueJamItem(Self.FileList[x]);
-            self.jamlistview.Update;
-            self.jamlistview.Invalidate;
+            Self.jamlistview.BeginUpdate;
+            Self.QueueJamItem(Self.FileList[X]);
+            Self.jamlistview.Update;
+            Self.jamlistview.Invalidate;
+            Self.jamlistview.EndUpdate;
+            Self.ProgressBar.Position := Self.ProgressBar.Position + 1;
+            Self.jamLoading.Caption := format('Loading JAM %d of %d',
+              [Self.ProgressBar.Position, Self.ProgressBar.Max]);
             Application.ProcessMessages;
-            Self.jamListView.EndUpdate;
+
+            if cancelJob then
+              break;
+
           end;
         finally
 
-          copiedlist.free;
-//          Self.jamLoading.Visible := false;
+          CopiedList.Free;
+          scanGroup.Enabled := true;
+          Self.jamLoading.Visible := false;
+          Self.ProgressBar.Visible := false;
         end;
       end)
 
   finally
+    NewList.Clear;
     NewList.Free;
     // Restore palette (can be done off-thread)
     for i := 0 to 255 do
       GPXPal[i] := tmpPal[i];
   end;
 end;
-
-
-
 
 end.

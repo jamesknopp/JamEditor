@@ -3,7 +3,7 @@
         <ProjectGuid>{60116524-51E3-4A91-801E-3B63CCAD34EC}</ProjectGuid>
         <MainSource>jamviewer.dpr</MainSource>
         <Base>True</Base>
-        <Config Condition="'$(Config)'==''">Debug</Config>
+        <Config Condition="'$(Config)'==''">Release</Config>
         <ProjectName Condition="'$(ProjectName)'==''">jamviewer</ProjectName>
         <TargetedPlatforms>1</TargetedPlatforms>
         <AppType>Application</AppType>
@@ -84,16 +84,15 @@
     <PropertyGroup Condition="'$(Cfg_1_Win32)'!=''">
         <AppDPIAwarenessMode>PerMonitorV2</AppDPIAwarenessMode>
         <VerInfo_IncludeVerInfo>true</VerInfo_IncludeVerInfo>
-        <VerInfo_Locale>1033</VerInfo_Locale>
+        <VerInfo_Locale>2057</VerInfo_Locale>
         <VerInfo_Keys>CompanyName=;FileDescription=$(MSBuildProjectName);FileVersion=1.0.0.0;InternalName=;LegalCopyright=;LegalTrademarks=;OriginalFilename=;ProductName=$(MSBuildProjectName);ProductVersion=1.0.0.0;Comments=;ProgramID=com.embarcadero.$(MSBuildProjectName)</VerInfo_Keys>
         <DCC_MapFile>3</DCC_MapFile>
-        <DCC_ExeOutput>C:\Users\james\OneDrive\coding\++WORKINGCODE++\gp3Jam2000_v008\RELEASE\</DCC_ExeOutput>
         <DCC_Optimize>true</DCC_Optimize>
         <DCC_ImportedDataReferences>false</DCC_ImportedDataReferences>
         <DCC_AssertionsAtRuntime>false</DCC_AssertionsAtRuntime>
         <Debugger_LoadAllSymbols>false</Debugger_LoadAllSymbols>
-        <DCC_Define>madExcept;$(DCC_Define)</DCC_Define>
         <DCC_DebugInformation>2</DCC_DebugInformation>
+        <DCC_Define>madExcept;$(DCC_Define)</DCC_Define>
         <DCC_LocalDebugSymbols>true</DCC_LocalDebugSymbols>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Cfg_2)'!=''">
@@ -109,6 +108,7 @@
         <VerInfo_Locale>1033</VerInfo_Locale>
         <VerInfo_Keys>CompanyName=;FileDescription=$(MSBuildProjectName);FileVersion=1.0.0.0;InternalName=;LegalCopyright=;LegalTrademarks=;OriginalFilename=;ProductName=$(MSBuildProjectName);ProductVersion=1.0.0.0;Comments=;ProgramID=com.embarcadero.$(MSBuildProjectName)</VerInfo_Keys>
         <DCC_MapFile>3</DCC_MapFile>
+        <DCC_Define>madExcept;$(DCC_Define)</DCC_Define>
     </PropertyGroup>
     <ItemGroup>
         <DelphiCompile Include="$(MainSource)">
@@ -147,6 +147,7 @@
             <Form>frmJamAnalysis</Form>
             <FormType>dfm</FormType>
         </DCCReference>
+        <DCCReference Include="GP3Track.pas"/>
         <RcItem Include="assets\noPreview.png">
             <ResourceType>RCDATA</ResourceType>
             <ResourceId>noJamPreview</ResourceId>
@@ -181,7 +182,7 @@
                 <Platform value="Win64">False</Platform>
             </Platforms>
             <Deployment Version="4">
-                <DeployFile LocalName="RELEASE\jamviewer.exe" Configuration="Release" Class="ProjectOutput">
+                <DeployFile LocalName="..\gp3Jam2000_v008\RELEASE\jamviewer.exe" Configuration="Release" Class="ProjectOutput">
                     <Platform Name="Win32">
                         <RemoteName>jamviewer.exe</RemoteName>
                         <Overwrite>true</Overwrite>

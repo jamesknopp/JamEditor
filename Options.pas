@@ -3,11 +3,11 @@ unit Options;
 interface
 
 uses
-   Winapi.Windows, Winapi.Messages,
+  Winapi.Windows, Winapi.Messages,
   System.SysUtils, System.Types, System.UITypes, System.Classes,
-  System.IOUtils,                    // for TDirectory, TPath
+  System.IOUtils, // for TDirectory, TPath
   Vcl.Graphics, Vcl.Controls, Vcl.Forms,
-  Vcl.Dialogs,                       // for TFileOpenDialog, MessageDlg
+  Vcl.Dialogs, // for TFileOpenDialog, MessageDlg
   Vcl.StdCtrls, jamgeneral, jampalettedetector;
 
 type
@@ -18,19 +18,27 @@ type
     Label1: TLabel;
     Label2: TLabel;
     btnGP2Browse: TButton;
-    btnGPBrowse: TButton;
+    btnGP3Browse: TButton;
     GroupBox2: TGroupBox;
     Label3: TLabel;
     Button1: TButton;
+    Label4: TLabel;
+    edtGp32KLoc: TEdit;
+    btnGP32kBrowse: TButton;
+    Button3: TButton;
     procedure btnGP2BrowseClick(Sender: TObject);
-    procedure btnGPBrowseClick(Sender: TObject);
+    procedure btnGP3BrowseClick(Sender: TObject);
     procedure Button1Click(Sender: TObject);
     procedure FormShow(Sender: TObject);
+    procedure Button3Click(Sender: TObject);
+    procedure btnGP32kBrowseClick(Sender: TObject);
 
   private
     { Private declarations }
   public
-  function ValidateFolder(const APath, ExeName: string; const Subfolders: TArray<string>; out MissingItems: TArray<string>): Boolean;
+    function ValidateFolder(const APath, ExeName: string;
+      const Subfolders: TArray<string>;
+      out MissingItems: TArray<string>): Boolean;
   end;
 
 var
@@ -49,20 +57,22 @@ begin
   dlg := TFileOpenDialog.Create(nil);
   try
     dlg.Options := dlg.Options + [fdoPickFolders, fdoPathMustExist];
-    dlg.Title   := 'Select the application folder';
-    if not dlg.Execute then Exit;
+    dlg.Title := 'Select the application folder';
+    if not dlg.Execute then
+      Exit;
 
-    pickedDir := dlg.FileName;  // the folder the user chose
+    pickedDir := dlg.FileName; // the folder the user chose
 
-
-    if ValidateFolder(pickedDir, 'GP2.exe', ['GameJams','Circuits'], missing) then
+    if ValidateFolder(pickedDir, 'GP2.exe', ['GameJams', 'Circuits'], missing)
+    then
     begin
       strGP2Location := pickedDir;
       edtGP2Loc.text := pickedDir;
     end
     else
     begin
-     ShowMessage('Invalid folder; missing:' + sLineBreak + string.Join(sLineBreak, missing));
+      ShowMessage('Invalid folder; missing:' + sLineBreak +
+        string.Join(sLineBreak, missing));
     end;
 
   finally
@@ -70,49 +80,99 @@ begin
   end;
 end;
 
-procedure ToptionsForm.btnGPBrowseClick(Sender: TObject);
+procedure ToptionsForm.btnGP32kBrowseClick(Sender: TObject);
 var
   dlg: TFileOpenDialog;
   pickedDir: string;
   missing: TArray<string>;
+  i: integer;
+  missingString: string;
 begin
   dlg := TFileOpenDialog.Create(nil);
   try
     dlg.Options := dlg.Options + [fdoPickFolders, fdoPathMustExist];
-    dlg.Title   := 'Select the application folder';
-    if not dlg.Execute then Exit;
+    dlg.Title := 'Select the application folder';
+    if not dlg.Execute then
+      Exit;
 
-    pickedDir := dlg.FileName;  // the folder the user chose
+    pickedDir := dlg.FileName; // the folder the user chose
 
-
-    if ValidateFolder(pickedDir, 'GP3.exe', ['Gp3Jams','Gp3JamsH'], missing) then
+    if ValidateFolder(pickedDir, 'GP3_2000.exe', ['Gp3Jams', 'Gp3JamsH'],
+      missing) then
     begin
-      strGP3Location := pickedDir;
-      edtGP3Loc.text := pickedDir;
+      strGP32kLocation := pickedDir;
+      edtGp32KLoc.text := pickedDir;
     end
+    // else
+    // if ValidateFolder(pickedDir, 'GP3_2000.exe', ['Gp3Jams','Gp3JamsH'], missing) then
+    // begin
+    // edtGP3Loc.text := pickedDir;
+    // end
     else
-    if ValidateFolder(pickedDir, 'GP3_2000.exe', ['Gp3Jams','Gp3JamsH'], missing) then
     begin
-    edtGP3Loc.text := pickedDir;
-    end
-    else
-    begin
-     ShowMessage('Invalid folder');
+      ShowMessage('Invalid folder; missing:' + sLineBreak +
+        string.Join(sLineBreak, missing));
     end;
 
   finally
     dlg.Free;
   end;
 end;
+
+procedure ToptionsForm.btnGP3BrowseClick(Sender: TObject);
+var
+  dlg: TFileOpenDialog;
+  pickedDir: string;
+  missing: TArray<string>;
+  i: integer;
+  missingString: string;
+begin
+  dlg := TFileOpenDialog.Create(nil);
+  try
+    dlg.Options := dlg.Options + [fdoPickFolders, fdoPathMustExist];
+    dlg.Title := 'Select the application folder';
+    if not dlg.Execute then
+      Exit;
+
+    pickedDir := dlg.FileName; // the folder the user chose
+
+    if ValidateFolder(pickedDir, 'GP3.exe', ['Gp3Jams', 'Gp3JamsH'], missing)
+    then
+    begin
+      strGP3Location := pickedDir;
+      edtGp3Loc.text := pickedDir;
+    end
+    // else
+    // if ValidateFolder(pickedDir, 'GP3_2000.exe', ['Gp3Jams','Gp3JamsH'], missing) then
+    // begin
+    // edtGP3Loc.text := pickedDir;
+    // end
+    else
+    begin
+      ShowMessage('Invalid folder; missing:' + sLineBreak +
+        string.Join(sLineBreak, missing));
+    end;
+
+  finally
+    dlg.Free;
+  end;
+end;
+
 procedure ToptionsForm.Button1Click(Sender: TObject);
 begin
-jampalettedetector.TJamPaletteDetector.Instance.ClearEntries;
+  jampalettedetector.TJamPaletteDetector.Instance.ClearEntries;
+end;
+
+procedure ToptionsForm.Button3Click(Sender: TObject);
+begin
+  optionsForm.close;
 end;
 
 procedure ToptionsForm.FormShow(Sender: TObject);
 begin
-      edtGP2Loc.text := strGP2Location;
-      edtGP3Loc.text := strGP3Location;
+  edtGP2Loc.text := strGP2Location;
+  edtGp3Loc.text := strGP3Location;
+  edtGp32KLoc.text := strGP32kLocation;
 
 end;
 
@@ -120,7 +180,7 @@ function ToptionsForm.ValidateFolder(const APath, ExeName: string;
   const Subfolders: TArray<string>; out MissingItems: TArray<string>): Boolean;
 var
   fullExePath: string;
-  i: Integer;
+  i: integer;
   req: string;
 begin
   MissingItems := [];
@@ -140,6 +200,5 @@ begin
 
   Result := Length(MissingItems) = 0;
 end;
-
 
 end.
