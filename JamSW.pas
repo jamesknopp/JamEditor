@@ -543,15 +543,14 @@ begin
 
   Raw := Buf;
 
-  TFile.WriteAllBytes(FileName, Raw);
+  TFile.WriteAllBytes(FileName+'dec', Raw);
 
 end;
 
 function TJamFile.LoadFromFile(const FileName: string;
   preview: boolean): boolean;
 const
-  RCRFixupFiles: array [0 .. 9] of string = ('rcr1a', 'rcr2a', 'rcr3a', 'rcr4a',
-    'rcr5a', 'rcr1', 'rcr2', 'rcr3', 'rcr4', 'rcr5');
+
 HardcodedDims:
 array [0 .. 6] of record Name: string;
 Width, Height: integer;
@@ -594,7 +593,7 @@ begin
     SaveDecryptedJam(FileName);
 
   // if sFilename = 'shill' then Exit;
-  CheckIfRCR(sFilename);
+  CheckIfRCR(Filename);
 
   // Load + decrypt
   Raw := TFile.ReadAllBytes(FileName);

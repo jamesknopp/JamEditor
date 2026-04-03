@@ -4,7 +4,7 @@ interface
 
 uses
   System.SysUtils, System.StrUtils, System.Classes, System.IOUtils, System.Math,
-  Winapi.Windows, Vcl.Graphics, System.Generics.Collections;
+  Winapi.Windows, Vcl.Graphics, System.Generics.Collections, Vcl.dialogs;
 
 const
   JAM_HW_MAGIC = $0098967F; // Magic number to identify it's a HW JAM
@@ -470,13 +470,13 @@ var
   i: Integer;
   Filename: string;
 begin
-  Filename := lowerCase(S);
+  Filename := lowercase(ChangeFileExt(ExtractFileName(s), ''));
   Result := 0;
   boolRcrJam := False;
   for i := Low(rcrJAMList) to High(rcrJAMList) do
   begin
-    // ShowMessage('Input: ' + filename + ' listed item: ' + rcrJamList[i]);
-    if lowerCase(Filename) = lowerCase(rcrJAMList[i]) then
+    //ShowMessage('Input: ' + filename + ' listed item: ' + rcrJamList[i]);
+    if Filename = lowerCase(rcrJAMList[i]) then
     begin
       Result := 1;
       boolRcrJam := True;

@@ -3545,20 +3545,20 @@ object FormMain: TFormMain
       object N16: TMenuItem
         Caption = '-'
       end
-      object ConverttoGP2JAM1: TMenuItem
+      object ConverttoGP2JAM: TMenuItem
         Caption = 'Convert to GP2 JAM'
         Enabled = False
-        OnClick = ConverttoGP2JAM1Click
+        OnClick = ConverttoGP2JAMClick
       end
-      object ConverttoGP3SWJAM1: TMenuItem
+      object ConverttoGP3SWJAM: TMenuItem
         Caption = 'Convert to GP3 SW JAM'
         Enabled = False
-        OnClick = ConverttoGP3SWJAM1Click
+        OnClick = ConverttoGP3SWJAMClick
       end
-      object ConverttoGP3HWJAM1: TMenuItem
+      object ConverttoGP3HWJAM: TMenuItem
         Caption = 'Convert to GP3 HW JAM'
         Enabled = False
-        OnClick = ConverttoGP3HWJAM1Click
+        OnClick = ConverttoGP3HWJAMClick
       end
       object N17: TMenuItem
         Caption = '-'

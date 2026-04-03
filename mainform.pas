@@ -137,9 +137,9 @@ type
                 N15: TMenuItem;
                 PreviewMask1: TMenuItem;
                 N16: TMenuItem;
-                ConverttoGP2JAM1: TMenuItem;
-                ConverttoGP3SWJAM1: TMenuItem;
-                ConverttoGP3HWJAM1: TMenuItem;
+    ConverttoGP2JAM: TMenuItem;
+    ConverttoGP3SWJAM: TMenuItem;
+    ConverttoGP3HWJAM: TMenuItem;
                 panel_TexProperties_Generic: TPanel;
                 Label5: TLabel;
                 Label6: TLabel;
@@ -315,9 +315,9 @@ type
                 procedure Undo1Click(Sender: TObject);
                 procedure Redo1Click(Sender: TObject);
                 procedure PreviewMask1Click(Sender: TObject);
-                procedure ConverttoGP2JAM1Click(Sender: TObject);
-                procedure ConverttoGP3SWJAM1Click(Sender: TObject);
-                procedure ConverttoGP3HWJAM1Click(Sender: TObject);
+                procedure ConverttoGP2JAMClick(Sender: TObject);
+                procedure ConverttoGP3SWJAMClick(Sender: TObject);
+                procedure ConverttoGP3HWJAMClick(Sender: TObject);
                 procedure scaleFlagsClickCheck(Sender: TObject);
                 procedure texScaleXChange(Sender: TObject);
                 procedure texScaleYChange(Sender: TObject);
@@ -1847,10 +1847,6 @@ begin
                 SWUndoStack.Clear;
                 AddToMRU(filename);
 
-                ConverttoGP2JAM1.Enabled := True;
-                ConverttoGP3SWJAM1.Enabled := True;
-                ConverttoGP3HWJAM1.Enabled := True;
-
                 intSelectedTexture := -1;
                 intJamZoom := 1;
 
@@ -1895,13 +1891,12 @@ begin
                         panel_TexScaling.Visible := True;
                         panel_ScaleParameters.Visible := True;
 
-                        panel_TexScaling.Visible := false;
                         panel_PalPreview.Visible := false;
                         // panel_PaletteEdit.Visible := false;
 
                         // panel_palEdit.Visible := false;
                         panel_RCRControls.Visible := false;
-                        panel_ScaleParameters.Visible := false;
+
 
                         toolBar_PalPrev.Visible := false;
                         toolBar_Pal1.Visible := false;
@@ -1920,6 +1915,10 @@ begin
                         btnRegenAllPals.Enabled := false;
                         btnRemoveAllPals.Enabled := false;
                         btnRemovePal.Enabled := false;
+
+                        ConverttoGP2JAM.Enabled := true;
+                        ConverttoGP3SWJAM.Enabled := True;
+                        ConverttoGP3HWJAM.Enabled := false;
 
                 end
                 else
@@ -1963,12 +1962,17 @@ begin
                                         begin
                                         toolBar_GP3PAL.down := false;
                                         toolBar_GP2PAL.down := True;
-
+                                        ConverttoGP2JAM.Enabled := false;
+                                        ConverttoGP3SWJAM.Enabled := True;
+                                        ConverttoGP3HWJAM.Enabled := True;
                                         end;
                                 jamGP3SW:
                                         begin
                                         toolBar_GP3PAL.down := True;
                                         toolBar_GP2PAL.down := false;
+                                        ConverttoGP2JAM.Enabled := true;
+                                        ConverttoGP3SWJAM.Enabled := false;
+                                        ConverttoGP3HWJAM.Enabled := True;
 
                                         end;
                         end;
@@ -1981,6 +1985,27 @@ begin
                         panel_PaletteEdit.Visible := false;
                         panel_PalEdit.Visible := false;
                         panel_RCRControls.Visible := True;
+
+
+                        toolBar_PalPrev.Visible := false;
+                        toolBar_Pal1.Visible := false;
+                        toolBar_Pal2.Visible := false;
+                        toolBar_Pal3.Visible := false;
+                        toolBar_Pal4.Visible := false;
+                        toolBar_PalNext.Visible := false;
+
+                        btnGenPal.Enabled := false;
+                        btnPal0.Enabled := false;
+                        btnPal1.Enabled := false;
+                        btnPal2.Enabled := false;
+                        btnPal3.Enabled := false;
+                        btnRegenAllPals.Enabled := false;
+                        btnRemoveAllPals.Enabled := false;
+                        btnRemovePal.Enabled := false;
+
+                        ConverttoGP2JAM.Enabled := false;
+                        ConverttoGP3SWJAM.Enabled := false;
+                        ConverttoGP3HWJAM.Enabled := false;
                 end
                 else
                         panel_RCR.Visible := false;
@@ -2357,18 +2382,18 @@ begin
 
 end;
 
-procedure TFormMain.ConverttoGP2JAM1Click(Sender: TObject);
+procedure TFormMain.ConverttoGP2JAMClick(Sender: TObject);
 begin
         ConvertJAM(jamGP2);
 end;
 
-procedure TFormMain.ConverttoGP3HWJAM1Click(Sender: TObject);
+procedure TFormMain.ConverttoGP3HWJAMClick(Sender: TObject);
 begin
 
         ConvertJAM(jamGP3HW);
 end;
 
-procedure TFormMain.ConverttoGP3SWJAM1Click(Sender: TObject);
+procedure TFormMain.ConverttoGP3SWJAMClick(Sender: TObject);
 begin
         ConvertJAM(jamGP3SW);
 end;
