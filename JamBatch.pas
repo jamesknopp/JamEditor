@@ -466,7 +466,7 @@ begin
 
             FJamFile.ConvertHWJam(FHWJamFile, False);
 
-            FJamFile.SaveToFile(ThisItem.outputpath);
+            FJamFile.SaveToFile(ThisItem.outputpath, false);
 
             FJamFile.Free;
             FHWJamFile.Free;
@@ -481,7 +481,7 @@ begin
 
             FJamFile.ConvertHWJam(FHWJamFile, True);
 
-            FJamFile.SaveToFile(ThisItem.outputpath);
+            FJamFile.SaveToFile(ThisItem.outputpath, false);
 
             FJamFile.Free;
             FHWJamFile.Free;
@@ -503,7 +503,7 @@ begin
               for x := 0 to FJamFile.FEntries.Count - 1 do
                 FJamFile.ZeroPalette(x);
 
-            FJamFile.SaveToFile(ThisItem.outputpath);
+            FJamFile.SaveToFile(ThisItem.outputpath, false);
 
             FJamFile.Free;
             FOldJamFile.Free;
@@ -522,7 +522,7 @@ begin
               for x := 0 to FJamFile.FEntries.Count - 1 do
                 FJamFile.ZeroPalette(x);
 
-            FJamFile.SaveToFile(ThisItem.outputpath);
+            FJamFile.SaveToFile(ThisItem.outputpath, false);
 
             FJamFile.Free;
             FOldJamFile.Free;
@@ -553,7 +553,7 @@ begin
               for x := 0 to FJamFile.FEntries.Count - 1 do
                 FJamFile.ZeroPalette(x);
 
-            FJamFile.SaveToFile(ThisItem.outputpath);
+            FJamFile.SaveToFile(ThisItem.outputpath, false);
 
             FJamFile.Free;
             FOldJamFile.Free;
@@ -572,7 +572,7 @@ begin
               for x := 0 to FJamFile.FEntries.Count - 1 do
                 FJamFile.ZeroPalette(x);
 
-            FJamFile.SaveToFile(ThisItem.outputpath);
+            FJamFile.SaveToFile(ThisItem.outputpath, false);
 
             FJamFile.Free;
             FOldJamFile.Free;

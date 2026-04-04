@@ -74,7 +74,7 @@ type
     procedure SetGpxPal(boolGP2: boolean);
 
     function LoadFromFile(const FileName: string; preview: boolean): boolean;
-    procedure SaveToFile(const FileName: string);
+    procedure SaveToFile(const FileName: string; decrypt: boolean);
 
     procedure CreateNewJAM(FileName: string; Height: integer);
 
@@ -139,6 +139,10 @@ type
     function GetIDX0aFlags(idx0a: Word): Byte;
     function GetIDX0aScale(idx0a: Word): Byte;
     function SetIDX0a(flags, scale: Byte): Word;
+
+    procedure BuildRect_SW(Jam: TJamFile; var Rects: TArray<TJamRect>);
+
+    procedure ApplyRects_SW(Jam: TJamFile; const Rects: TArray<TJamRect>);
 
     property Entries: TList<TJamEntry> read FEntries write FEntries;
   end;
@@ -476,7 +480,7 @@ begin
   intJamMaxHeight := Height;
 
   JamFileName := sFilename;
-  JamFullPath := '';
+  JamFullPath := sFilename;
 end;
 
 procedure TJamFile.SetGpxPal(boolGP2: boolean);
@@ -543,7 +547,7 @@ begin
 
   Raw := Buf;
 
-  TFile.WriteAllBytes(FileName+'dec', Raw);
+  TFile.WriteAllBytes(FileName + 'dec', Raw);
 
 end;
 
@@ -585,15 +589,15 @@ begin
   intJamMaxHeight := 0;
 
   sFilename := lowercase(ChangeFileExt(ExtractFileName(FileName), ''));
-
-  if sFilename = 'bars' then
-    SaveDecryptedJam(FileName);
-
-  if sFilename = 'barm' then
-    SaveDecryptedJam(FileName);
+  //
+  // if sFilename = 'bars' then
+  // SaveDecryptedJam(FileName);
+  //
+  // if sFilename = 'barm' then
+  // SaveDecryptedJam(FileName);
 
   // if sFilename = 'shill' then Exit;
-  CheckIfRCR(Filename);
+  CheckIfRCR(FileName);
 
   // Load + decrypt
   Raw := TFile.ReadAllBytes(FileName);
@@ -605,6 +609,16 @@ begin
   Inc(Ptr, SizeOf(FHeader));
   if FHeader.NumItems = 0 then
     FHeader.NumItems := 1;
+
+  // Have to manually detect RCR2B for GP3, as there's RCR2B for GP2 which is a 'real RCR JAM' with double width/interlacing.
+  // Whereas GP3 RCR2B is technically a 'normal' JAM file.
+
+  if sFilename = 'rcr2b' then
+    if FHeader.JamTotalHeight = 354 then
+    begin
+      boolRcrJam := False;
+    //  ShowMessage('rcr2b GP3 detected');  //DEBUG
+    end;
 
   // Parse Entries
   if not MatchText(sFilename, ['car_srf', 'hlm_srf', 'vcp_srf', 'vcp_srf2',
@@ -667,6 +681,13 @@ begin
 
   FRawData := Copy(Buf, Ptr, TrueSize);
 
+  canvasHeight := FHeader.JamTotalHeight;
+
+  canvasWidth := 256;
+
+  if boolRcrJam then
+    canvasWidth := 512;
+
   // Generate textures
   if not MatchText(sFilename, ['car_srf', 'hlm_srf', 'vcp_srf', 'vcp_srf2',
     'shill', 'mhill', 'bars', 'barm']) then
@@ -685,13 +706,6 @@ begin
           FOriginalTex := DrawPalTexture(i);
           CachePaletteBMP(i);
         end;
-
-        // if Finfo.PaletteSizeDiv4 = 0 then
-        // try
-        // ZeroPalette(i);
-        // finally
-        //
-        // end;
       end;
 
     end;
@@ -699,17 +713,10 @@ begin
   JamFileName := sFilename;
   JamFullPath := FileName;
 
-  canvasHeight := FHeader.JamTotalHeight;
-
-  if boolRcrJam then
-    canvasWidth := 512
-  else
-    canvasWidth := 256;
-
   Result := True;
 end;
 
-procedure TJamFile.SaveToFile(const FileName: string);
+procedure TJamFile.SaveToFile(const FileName: string; decrypt: boolean);
 var
   ms: TMemoryStream;
   Entry: TJamEntry;
@@ -757,6 +764,7 @@ begin
     ms.ReadBuffer(buffer[0], ms.Size);
 
     // 6) XOr
+    if decrypt = false then
     buffer := UnJam(buffer);
 
     // 7) Write to disk
@@ -988,6 +996,7 @@ begin
     end
     else
     begin
+
       X0 := FEntries[JamId].FInfo.X;
       Y0 := FEntries[JamId].FInfo.Y;
     end;
@@ -2129,6 +2138,33 @@ end;
 function TJamFile.SetIDX0a(flags, scale: Byte): Word;
 begin
   Result := (Word(scale) shl 8) or flags;
+end;
+
+procedure TJamFile.BuildRect_SW(Jam: TJamFile; var Rects: TArray<TJamRect>);
+var
+  i: integer;
+begin
+  SetLength(Rects, Jam.FHeader.NumItems);
+
+  for i := 0 to Jam.FHeader.NumItems - 1 do
+  begin
+    Rects[i].X := Jam.FEntries[i].FInfo.X;
+    Rects[i].Y := Jam.FEntries[i].FInfo.Y;
+    Rects[i].Width := Jam.FEntries[i].FInfo.Width;
+    Rects[i].Height := Jam.FEntries[i].FInfo.Height;
+    Rects[i].Index := i;
+  end;
+end;
+
+procedure TJamFile.ApplyRects_SW(Jam: TJamFile; const Rects: TArray<TJamRect>);
+var
+  i: integer;
+begin
+  for i := 0 to High(Rects) do
+  begin
+    Jam.FEntries[Rects[i].Index].FInfo.X := Rects[i].X;
+    Jam.FEntries[Rects[i].Index].FInfo.Y := Rects[i].Y;
+  end;
 end;
 
 end.

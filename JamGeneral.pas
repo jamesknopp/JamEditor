@@ -4,7 +4,7 @@ interface
 
 uses
   System.SysUtils, System.StrUtils, System.Classes, System.IOUtils, System.Math,
-  Winapi.Windows, Vcl.Graphics, System.Generics.Collections, Vcl.dialogs;
+  Winapi.Windows, Vcl.Graphics, System.Generics.Collections, Vcl.dialogs, Generics.Defaults;
 
 const
   JAM_HW_MAGIC = $0098967F; // Magic number to identify it's a HW JAM
@@ -50,25 +50,25 @@ type
     NumFrames: Integer; // = 1 shl FrameCountExp
   end;
 
-  THWRawJamEntryInfo = packed record
-    PosRawX: Word; // 0
-    PosRawY: Word; // 1
-    Width: Word; // 2
-    Height: Word; // 3
-    scaleX: byte; // 4
-    scaleY: byte; // 4
-    scaleFlag: byte; // 5
-    scaleFactor: byte; // 5
-    ImagePtr: Word; // 6
-    Idx0E: Word; // 7 totally unk
-    PaletteSizeDiv4: Word; // 8
-    JamID: Word; // 9
-    jamflags: Word; // 10 flags
-    Idx16: byte; // 11 untex color 1; entry in palette
-    Idx17: byte; // 11 untext color 2; entry in palette
-    Idx18: array [0 .. 7] of byte; // 12-16
-    // 3,4 and 6 seem to be used in car liveries (gp3)... maybe load up all JAM files and create CSVs with all the data to review??
-  end;
+//  THWRawJamEntryInfo = packed record
+//    PosRawX: Word; // 0
+//    PosRawY: Word; // 1
+//    Width: Word; // 2
+//    Height: Word; // 3
+//    scaleX: byte; // 4
+//    scaleY: byte; // 4
+//    scaleFlag: byte; // 5
+//    scaleFactor: byte; // 5
+//    ImagePtr: Word; // 6
+//    Idx0E: Word; // 7 totally unk
+//    PaletteSizeDiv4: Word; // 8
+//    JamID: Word; // 9
+//    jamflags: Word; // 10 flags
+//    Idx16: byte; // 11 untex color 1; entry in palette
+//    Idx17: byte; // 11 untext color 2; entry in palette
+//    Idx18: array [0 .. 7] of byte; // 12-16
+//    // 3,4 and 6 seem to be used in car liveries (gp3)... maybe load up all JAM files and create CSVs with all the data to review??
+//  end;
 
   TJamHeader = packed record
     NumItems: Word;
@@ -97,6 +97,13 @@ type
     Idx18: array [0 .. 7] of byte;
     // 3,4 and 6 seem to be used in car liveries (gp3)... maybe load up all JAM files and create CSVs with all the data to review??
   end;
+
+
+  TJamRect = record
+    X,Y : integer;
+    Width, Height: integer;
+    index: integer;
+    end;
 
 type
   TJamType = (jamGP2, jamGP3SW, jamGP3HW);
@@ -216,6 +223,7 @@ var
 
   jamType: TJamType;
 
+
 function CheckIfRCR(const S: string): Integer;
 function CreateTransparencyMatte(const Bmp: TBitmap): TBitmap;
 function DetectTransCol(Bmp: TBitmap): Boolean;
@@ -240,7 +248,10 @@ function ToggleGP3JamsFolder(const APath: string): string;
 
 function ExtractColumns8Bit(const Source: TBitmap; ReadOdd: Boolean): TBitmap;
 
+function RectsOverlap(const A, B: TJamRect): Boolean;
+
 implementation
+
 
 function DrawTextureOutlines(jamCanvas: TBitmap; X: Integer; Y: Integer;
   Width: Integer; Height: Integer; i: Integer; JamID: Integer): TBitmap;
@@ -594,7 +605,7 @@ begin
   // Copy palette so the byte values map the same colours
   Result.Palette := CopyPalette(Source.Palette);
 
-  // Copy each scan‑line, picking every 2nd byte
+  // Copy each scanline, picking every 2nd byte
   for Y := 0 to Source.Height - 1 do
   begin
     srcLine := Source.ScanLine[Y];
@@ -610,5 +621,66 @@ begin
     end;
   end;
 end;
+
+function RectsOverlap(const A, B: TJamRect): Boolean;
+begin
+  Result :=
+    not (
+      (A.X + A.Width  <= B.X) or
+      (A.X >= B.X + B.Width) or
+      (A.Y + A.Height <= B.Y) or
+      (A.Y >= B.Y + B.Height)
+    );
+end;
+
+procedure PackRects(var Rects: TArray<TJamRect>; CanvasWidth: Integer; out CanvasHeight: Integer);
+var
+  i: Integer;
+  CurX, CurY: Integer;
+  RowHeight: Integer;
+begin
+  // 1. Sort by size (largest first)
+  TArray.Sort<TJamRect>(Rects,
+    TComparer<TJamRect>.Construct(
+      function(const A, B: TJamRect): Integer
+      var
+        AreaA, AreaB: Integer;
+      begin
+        AreaA := A.Width * A.Height;
+        AreaB := B.Width * B.Height;
+        Result := AreaB - AreaA; // biggest first
+      end));
+
+  CurX := 0;
+  CurY := 0;
+  RowHeight := 0;
+
+  // 2. Place each rect
+  for i := 0 to High(Rects) do
+  begin
+    // If it doesn't fit in current row → new row
+    if (CurX + Rects[i].Width) > CanvasWidth then
+    begin
+      CurX := 0;
+      Inc(CurY, RowHeight);
+      RowHeight := 0;
+    end;
+
+    // Place rect
+    Rects[i].X := CurX;
+    Rects[i].Y := CurY;
+
+    // Advance X
+    Inc(CurX, Rects[i].Width);
+
+    // Track tallest item in row
+    if Rects[i].Height > RowHeight then
+      RowHeight := Rects[i].Height;
+  end;
+
+  // 3. Final canvas height
+  CanvasHeight := CurY + RowHeight;
+end;
+
 
 end.

@@ -24,7 +24,7 @@ type
   THWJamEntry = class
   public
     FInfo: THWJamEntryInfo;
-    FRawInfo: THWRawJamEntryInfo;
+  //  FRawInfo: THWRawJamEntryInfo;
     FTexture: TBitmap;
     FOriginalTex: TBitmap;
     boolImportedBMP: boolean;
@@ -85,6 +85,12 @@ type
     function DrawOutlines(JamCanvas: TBitmap): TBitmap;
 
     procedure ConvertGPxJam(origJamPath: string);
+
+    procedure BuildRect_HW(Jam: THWJamFile; var Rects: TArray<TJamRect>);
+
+    procedure ApplyRects_HW(Jam: THWJamFile; const Rects: TArray<TJamRect>);
+
+
 
     property Entries: TList<THWJamEntry> read FEntries write FEntries;
   end;
@@ -381,7 +387,7 @@ var
 
   RawBytes, BufBytes: TBytes;
   Ptr, palCount: integer;
-  HWInfo: THWRawJamEntryInfo;
+ // HWInfo: THWRawJamEntryInfo;
 begin
   Result := false;
 
@@ -586,7 +592,7 @@ begin
   intjamMaxWidth := 256;
 
   sFilename := lowercase(ChangeFileExt(ExtractFileName(FileName), ''));
-  JamFullPath := '';
+  JamFullPath := filename;
 
   FHeader.NumItems := 0;
 
@@ -1077,5 +1083,33 @@ begin
   origJam.free;
 
 end;
+
+procedure THWJamFile.BuildRect_HW(Jam: THWJamFile; var Rects: TArray<TJamRect>);
+  var
+    i: integer;
+  begin
+    SetLength(Rects, Jam.FHeader.NumItems);
+
+    for i := 0 to Jam.FHeader.NumItems - 1 do
+    begin
+      Rects[i].X := Jam.FEntries[i].FInfo.X;
+      Rects[i].Y := Jam.FEntries[i].FInfo.Y;
+      Rects[i].Width := Jam.FEntries[i].FInfo.Width;
+      Rects[i].Height := Jam.FEntries[i].FInfo.Height;
+      rects[i].index := i;
+    end;
+  end;
+
+procedure THWJamFile.ApplyRects_HW(Jam: THWJamFile; const Rects: TArray<TJamRect>);
+var
+  i: Integer;
+begin
+  for i := 0 to High(Rects) do
+  begin
+    Jam.FEntries[Rects[i].Index].FInfo.X := Rects[i].X;
+    Jam.FEntries[Rects[i].Index].FInfo.Y := Rects[i].Y;
+  end;
+end;
+
 
 end.
