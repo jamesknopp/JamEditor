@@ -2543,7 +2543,6 @@ object FormMain: TFormMain
         Width = 256
       end>
     StyleName = 'Windows'
-    ExplicitLeft = 0
   end
   object leftPanel: TPanel
     Left = 0
@@ -46271,6 +46270,7 @@ object FormMain: TFormMain
   end
   object undoTimer: TTimer
     Enabled = False
+    Interval = 500
     OnTimer = undoTimerTimer
     Left = 664
     Top = 250

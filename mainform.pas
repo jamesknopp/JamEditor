@@ -345,6 +345,10 @@ type
     procedure mainMenuImportCanvasClick(Sender: TObject);
     procedure autoPackTexsClick(Sender: TObject);
     procedure undoTimerTimer(Sender: TObject);
+    procedure tex_XMouseDown(Sender: TObject; Button: TMouseButton;
+      Shift: TShiftState; X, Y: Integer);
+    procedure tex_XMouseUp(Sender: TObject; Button: TMouseButton;
+      Shift: TShiftState; X, Y: Integer);
 
   public
     FJamFile: TJamFile;
@@ -960,7 +964,9 @@ var
   i: integer;
 begin
 
+  if boolUndo then
   PushUndoState;
+
   if boolHWJAM then
   begin
     FHWJamFile.BuildRect_HW(FHWJamFile, JamRects);
@@ -1777,6 +1783,13 @@ procedure TFormMain.LoadJam(filename: string);
 var
   i: integer;
 begin
+  boolUndo := false;
+
+  undo1.Enabled := false;
+  redo1.Enabled := false;
+
+  HWUndoStack.Clear;
+  SWUndoStack.Clear;
 
   if Assigned(FHWJamFile) then
   begin
@@ -1845,6 +1858,9 @@ begin
 
     SetStretchBltMode(ImageCanvas.Canvas.Handle, HALFTONE);
   end;
+
+
+  boolUndo := true;
 
 end;
 
@@ -2022,8 +2038,8 @@ end;
 
 procedure TFormMain.undoTimerTimer(Sender: TObject);
 begin
-undoTimer.Enabled := false;
-boolUndo := true;
+  undoTimer.Enabled := false;
+  boolUndo := true;
 end;
 
 procedure TFormMain.btnLoadJamClick(Sender: TObject);
@@ -2563,6 +2579,12 @@ begin
   begin
     Key := Msg.wParam;
     Handled := false;
+
+    if Key in [VK_LEFT, VK_RIGHT, VK_UP, VK_DOWN] then
+    begin
+      boolUndo := true;
+    end;
+
     case Key of
       17:
         begin
@@ -2570,6 +2592,7 @@ begin
           Handled := true;
         end;
     end;
+
   end;
 
   if (Msg.message = WM_KEYDOWN) then
@@ -2605,6 +2628,9 @@ begin
       case Key of
         VK_LEFT:
           begin
+            if boolUndo then
+            PushUndoState;
+            boolUndo := false;
             if boolHWJAM then
             begin
               NewX := Max(0, EntryHW.FInfo.X - movestep);
@@ -2627,6 +2653,9 @@ begin
 
         VK_RIGHT:
           begin
+            if boolUndo then
+            PushUndoState;
+            boolUndo := false;
             if boolHWJAM then
             begin
               NewX := Min(255, EntryHW.FInfo.X + movestep);
@@ -2649,6 +2678,9 @@ begin
 
         VK_UP:
           begin
+            if boolUndo then
+            PushUndoState;
+            boolUndo := false;
             if boolHWJAM then
             begin
               NewY := Max(0, EntryHW.FInfo.Y - movestep);
@@ -2672,6 +2704,9 @@ begin
 
         VK_DOWN:
           begin
+            if boolUndo then
+            PushUndoState;
+            boolUndo := false;
             if boolHWJAM then
             begin
               NewY := Min(FHWJamFile.FHeader.JamTotalHeight - 1,
@@ -2890,10 +2925,10 @@ begin
 
     SWRedoStack.Push(FJamFile.Clone);
 
-    if SWRedoStack.count = 0 then
-    redo1.Enabled := false
+    if SWRedoStack.Count = 0 then
+      Redo1.Enabled := false
     else
-    redo1.Enabled := true;
+      Redo1.Enabled := true;
 
     // Free current file
     FJamFile.Free;
@@ -3473,10 +3508,13 @@ var
   newWidth, newHeight: integer;
 begin
 
-  JamSanityCheck;
-  JamSanityCheckInform(false);
+  if boolrcrJAM = false then
+  begin
+    JamSanityCheck;
+    JamSanityCheckInform(false);
 
-  autoPackTexs.Enabled := boolJamIssues;
+    autoPackTexs.Enabled := boolJamIssues;
+  end;
 
   if boolHWJAM = false then
     bmp := FJamFile.DrawFullJam(true);
@@ -3667,6 +3705,14 @@ begin
     Exit;
 
   boolHeightChange := true;
+
+   if boolUndo then
+  PushUndoState;
+
+  boolUndo := false;
+  UndoTimer.Enabled := false;
+  UndoTimer.Enabled := true;
+
   for i := 0 to SelectedTextureList.Count - 1 do
     UpdateJamData(SelectedTextureList[i]);
 end;
@@ -3735,6 +3781,14 @@ begin
     Exit;
 
   boolWidthChange := true;
+
+   if boolUndo then
+  PushUndoState;
+
+  boolUndo := false;
+  UndoTimer.Enabled := false;
+  UndoTimer.Enabled := true;
+
   for i := 0 to SelectedTextureList.Count - 1 do
     UpdateJamData(SelectedTextureList[i]);
 end;
@@ -3767,6 +3821,13 @@ begin
   if UpdatingFromCode or userisTyping then
     Exit;
   boolXChange := true;
+  if boolUndo then
+  PushUndoState;
+
+  boolUndo := false;
+  UndoTimer.Enabled := false;
+  UndoTimer.Enabled := true;
+
   for i := 0 to SelectedTextureList.Count - 1 do
     UpdateJamData(SelectedTextureList[i]);
 end;
@@ -3794,6 +3855,21 @@ begin
 
 end;
 
+procedure TFormMain.tex_XMouseDown(Sender: TObject; Button: TMouseButton;
+  Shift: TShiftState; X, Y: Integer);
+begin
+    if boolUndo then
+    PushUndoState;
+
+    boolUndo := false;
+end;
+
+procedure TFormMain.tex_XMouseUp(Sender: TObject; Button: TMouseButton;
+  Shift: TShiftState; X, Y: Integer);
+begin
+    boolUndo := true;
+end;
+
 procedure TFormMain.tex_YChange(Sender: TObject);
 var
   i: integer;
@@ -3802,6 +3878,13 @@ begin
     Exit;
 
   boolYChange := true;
+
+   if boolUndo then
+  PushUndoState;
+
+  boolUndo := false;
+  UndoTimer.Enabled := false;
+  UndoTimer.Enabled := true;
 
   for i := 0 to SelectedTextureList.Count - 1 do
     UpdateJamData(SelectedTextureList[i]);
@@ -4570,15 +4653,8 @@ begin
     (not boolHWJAM and (id >= FJamFile.Entries.Count)) then
     Exit;
 
-  if boolUndo then
-  PushUndoState;
-
   if boolUndo = true then
-  begin
-  undoTimer.Enabled := true;
-  boolUndo := false;
-  end;
-
+  PushUndoState;
 
   if boolHWJAM then
   begin

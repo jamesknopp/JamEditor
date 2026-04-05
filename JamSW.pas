@@ -30,6 +30,8 @@ type
     FOriginalTex: TBitmap;
     FRawTexture: TBytes;
     FCachedTex: array [0 .. 3] of TBitmap;
+    rcrA, rcrB : TBitmap;
+
     TempDimensions: TJamTempDimensions;
     boolImportedBMP: boolean;
 
@@ -50,6 +52,7 @@ type
       write SetPaletteSizeDiv4;
 
   end;
+
 
   TJamFile = class
   private
@@ -161,6 +164,9 @@ begin
   FTexture := nil;
   FOriginalTex := nil;
   FRawTexture := nil;
+  rcrA := nil;
+  rcrB := nil;
+
   for i := 0 to 3 do
     FCachedTex[i] := nil;
   intPaletteID := 0;
@@ -184,6 +190,11 @@ begin
   for i := 0 to 3 do
     FCachedTex[i].free;
 
+  if assigned(rcrA) then
+    freeAndNil(rcrA);
+
+  if assigned(rcrB) then
+    freeAndNil(rcrA);
   // Clear byte array
   FRawTexture := nil;
 
@@ -2167,5 +2178,6 @@ begin
     Jam.FEntries[Rects[i].Index].FInfo.Y := Rects[i].Y;
   end;
 end;
+
 
 end.
