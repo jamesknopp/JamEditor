@@ -2535,10 +2535,15 @@ object FormMain: TFormMain
     Height = 20
     Panels = <
       item
+        Width = 512
+      end
+      item
+        Alignment = taRightJustify
+        Text = 'Jam Sanity Check: All clear'
         Width = 256
       end>
-    SimplePanel = True
     StyleName = 'Windows'
+    ExplicitLeft = 0
   end
   object leftPanel: TPanel
     Left = 0
@@ -3328,14 +3333,14 @@ object FormMain: TFormMain
     end
   end
   object importDialog: TOpenPictureDialog
-    Left = 506
-    Top = 708
+    Left = 730
+    Top = 420
   end
   object exportDialog: TSaveDialog
     DefaultExt = 'bmp'
     Filter = 'bitmap|*.bmp'
-    Left = 596
-    Top = 700
+    Left = 644
+    Top = 524
   end
   object MainMenu1: TMainMenu
     OnChange = MainMenu1Change
@@ -3559,6 +3564,14 @@ object FormMain: TFormMain
         Caption = 'Convert to GP3 HW JAM'
         Enabled = False
         OnClick = ConverttoGP3HWJAMClick
+      end
+      object N18: TMenuItem
+        Caption = '-'
+      end
+      object autoPackTexs: TMenuItem
+        Caption = 'Auto Pack Textures'
+        Enabled = False
+        OnClick = autoPackTexsClick
       end
       object N17: TMenuItem
         Caption = '-'
@@ -46255,5 +46268,11 @@ object FormMain: TFormMain
     PreserveItems = True
     Left = 448
     Top = 200
+  end
+  object undoTimer: TTimer
+    Enabled = False
+    OnTimer = undoTimerTimer
+    Left = 664
+    Top = 250
   end
 end

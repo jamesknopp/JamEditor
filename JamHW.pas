@@ -408,8 +408,6 @@ begin
   intjamMaxWidth := 0;
   intJamMaxHeight := 0;
 
-  sFilename := lowercase(ChangeFileExt(ExtractFileName(FileName), ''));
-
   // Read & decrypt all file bytes
   if not FileExists(FileName) then
     Exit;
@@ -1096,6 +1094,7 @@ procedure THWJamFile.BuildRect_HW(Jam: THWJamFile; var Rects: TArray<TJamRect>);
       Rects[i].Y := Jam.FEntries[i].FInfo.Y;
       Rects[i].Width := Jam.FEntries[i].FInfo.Width;
       Rects[i].Height := Jam.FEntries[i].FInfo.Height;
+      rects[i].jamid := Jam.FEntries[i].FInfo.JamID;
       rects[i].index := i;
     end;
   end;

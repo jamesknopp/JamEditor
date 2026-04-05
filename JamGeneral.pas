@@ -4,7 +4,8 @@ interface
 
 uses
   System.SysUtils, System.StrUtils, System.Classes, System.IOUtils, System.Math,
-  Winapi.Windows, Vcl.Graphics, System.Generics.Collections, Vcl.dialogs, Generics.Defaults;
+  Winapi.Windows, Vcl.Graphics, System.Generics.Collections, Vcl.dialogs,
+  Generics.Defaults;
 
 const
   JAM_HW_MAGIC = $0098967F; // Magic number to identify it's a HW JAM
@@ -50,25 +51,25 @@ type
     NumFrames: Integer; // = 1 shl FrameCountExp
   end;
 
-//  THWRawJamEntryInfo = packed record
-//    PosRawX: Word; // 0
-//    PosRawY: Word; // 1
-//    Width: Word; // 2
-//    Height: Word; // 3
-//    scaleX: byte; // 4
-//    scaleY: byte; // 4
-//    scaleFlag: byte; // 5
-//    scaleFactor: byte; // 5
-//    ImagePtr: Word; // 6
-//    Idx0E: Word; // 7 totally unk
-//    PaletteSizeDiv4: Word; // 8
-//    JamID: Word; // 9
-//    jamflags: Word; // 10 flags
-//    Idx16: byte; // 11 untex color 1; entry in palette
-//    Idx17: byte; // 11 untext color 2; entry in palette
-//    Idx18: array [0 .. 7] of byte; // 12-16
-//    // 3,4 and 6 seem to be used in car liveries (gp3)... maybe load up all JAM files and create CSVs with all the data to review??
-//  end;
+  // THWRawJamEntryInfo = packed record
+  // PosRawX: Word; // 0
+  // PosRawY: Word; // 1
+  // Width: Word; // 2
+  // Height: Word; // 3
+  // scaleX: byte; // 4
+  // scaleY: byte; // 4
+  // scaleFlag: byte; // 5
+  // scaleFactor: byte; // 5
+  // ImagePtr: Word; // 6
+  // Idx0E: Word; // 7 totally unk
+  // PaletteSizeDiv4: Word; // 8
+  // JamID: Word; // 9
+  // jamflags: Word; // 10 flags
+  // Idx16: byte; // 11 untex color 1; entry in palette
+  // Idx17: byte; // 11 untext color 2; entry in palette
+  // Idx18: array [0 .. 7] of byte; // 12-16
+  // // 3,4 and 6 seem to be used in car liveries (gp3)... maybe load up all JAM files and create CSVs with all the data to review??
+  // end;
 
   TJamHeader = packed record
     NumItems: Word;
@@ -98,12 +99,16 @@ type
     // 3,4 and 6 seem to be used in car liveries (gp3)... maybe load up all JAM files and create CSVs with all the data to review??
   end;
 
-
   TJamRect = record
-    X,Y : integer;
-    Width, Height: integer;
-    index: integer;
-    end;
+    X, Y: Integer;
+    Width, Height: Integer;
+    index: Integer;
+    JamID: integer;
+  end;
+
+  TJamRectIntersects = record
+    JamID, intersectID: Integer;
+  end;
 
 type
   TJamType = (jamGP2, jamGP3SW, jamGP3HW);
@@ -111,6 +116,8 @@ type
 var
   ClipboardJAM: uint;
   ClipboardhwJAM: uint;
+
+  IntersectList: TList<TJamRectIntersects>;
 
   SelectedTextureList: TList<Integer>;
   rcrJAMList: array [0 .. 18] of string = (
@@ -182,6 +189,10 @@ var
 
   booljamLoaded: Boolean;
 
+  boolJamIssues : Boolean;
+
+  boolUndo : Boolean;
+
   generatePal: Boolean;
 
   boolJamModified: Boolean;
@@ -223,7 +234,6 @@ var
 
   jamType: TJamType;
 
-
 function CheckIfRCR(const S: string): Integer;
 function CreateTransparencyMatte(const Bmp: TBitmap): TBitmap;
 function DetectTransCol(Bmp: TBitmap): Boolean;
@@ -246,12 +256,16 @@ function PackFlag(data: Word; flagNum: Integer): Word;
 
 function ToggleGP3JamsFolder(const APath: string): string;
 
-function ExtractColumns8Bit(const Source: TBitmap; ReadOdd: Boolean): TBitmap;
+function DeinterlaceRCR(const Source: TBitmap; ReadOdd: Boolean): TBitmap;
 
 function RectsOverlap(const A, B: TJamRect): Boolean;
 
-implementation
+function DetectRectsOverlap(const Rects: TArray<TJamRect>): Boolean;
 
+procedure PackRects(var Rects: TArray<TJamRect>; CanvasWidth: Integer;
+  out CanvasHeight: Integer);
+
+implementation
 
 function DrawTextureOutlines(jamCanvas: TBitmap; X: Integer; Y: Integer;
   Width: Integer; Height: Integer; i: Integer; JamID: Integer): TBitmap;
@@ -260,10 +274,25 @@ var
   idText: string;
   rectX, rectY: Integer;
   textRect: TRect;
-  w, h, j: Integer;
+  w, h, j, k: Integer;
+  drawColour : TColor;
+  selectColour : TColor;
 begin
   if not booldrawOutlines then
     exit(jamCanvas);
+
+  drawColour := clInactiveBorder;
+  selectColour := clHighlight;
+
+  if boolJamIssues then
+  begin
+   for k := 0 to IntersectList.Count - 1 do
+   if intersectlist[k].jamID = jamID then
+   begin
+    drawColour := clRed;
+    selectColour := clYellow;
+  end;
+  end;
 
   jamCanvas.Canvas.lock;
 
@@ -276,12 +305,13 @@ begin
   Y := round(Y * intJamZoom);
   X := round(X * intJamZoom);
 
-  jamCanvas.Canvas.Pen.Color := clInactiveBorder;
+
+  jamCanvas.Canvas.Pen.Color := drawColour;
   // Set pen color for outlines
   for j in SelectedTextureList do
   begin
     if j = i then
-      jamCanvas.Canvas.Pen.Color := clHighlight;
+      jamCanvas.Canvas.Pen.Color := selectColour;
   end;
 
   jamCanvas.Canvas.Rectangle(X, Y, X + w, Y + h);
@@ -304,13 +334,12 @@ begin
 
   // Draw filled rectangle with black border
   jamCanvas.Canvas.Brush.Style := bsSolid;
-  jamCanvas.Canvas.Brush.Color := clInactiveBorder;
+  jamCanvas.Canvas.Brush.Color := drawColour;
 
   for j in SelectedTextureList do
   begin
     if j = i then
-
-      jamCanvas.Canvas.Brush.Color := clHighlight
+      jamCanvas.Canvas.Brush.Color := selectColour;
   end;
 
   jamCanvas.Canvas.Pen.Color := clBlack;
@@ -481,13 +510,13 @@ var
   i: Integer;
   Filename: string;
 begin
-  Filename := lowercase(ChangeFileExt(ExtractFileName(s), ''));
+  Filename := lowercase(ChangeFileExt(ExtractFileName(S), ''));
   Result := 0;
   boolRcrJam := False;
   for i := Low(rcrJAMList) to High(rcrJAMList) do
   begin
-    //ShowMessage('Input: ' + filename + ' listed item: ' + rcrJamList[i]);
-    if Filename = lowerCase(rcrJAMList[i]) then
+    // ShowMessage('Input: ' + filename + ' listed item: ' + rcrJamList[i]);
+    if Filename = lowercase(rcrJAMList[i]) then
     begin
       Result := 1;
       boolRcrJam := True;
@@ -570,13 +599,13 @@ begin
     Result := APath;
 end;
 
-function ExtractColumns8Bit(const Source: TBitmap; ReadOdd: Boolean): TBitmap;
+function DeinterlaceRCR(const Source: TBitmap; ReadOdd: Boolean): TBitmap;
 var
   StartX, NewWidth, Y, SrcX, DstX: Integer;
   srcLine, dstLine: PByteArray;
 begin
   if not Assigned(Source) then
-    raise Exception.Create('ExtractColumns8Bit: Source bitmap is nil');
+    raise Exception.Create('DeinterlaceRCR: Source bitmap is nil');
 
   // Ensure source is 8‑bit
   if Source.PixelFormat <> pf8bit then
@@ -624,32 +653,55 @@ end;
 
 function RectsOverlap(const A, B: TJamRect): Boolean;
 begin
-  Result :=
-    not (
-      (A.X + A.Width  <= B.X) or
-      (A.X >= B.X + B.Width) or
-      (A.Y + A.Height <= B.Y) or
-      (A.Y >= B.Y + B.Height)
-    );
+  Result := not((A.X + A.Width <= B.X) or (A.X >= B.X + B.Width) or
+    (A.Y + A.Height <= B.Y) or (A.Y >= B.Y + B.Height));
 end;
 
-procedure PackRects(var Rects: TArray<TJamRect>; CanvasWidth: Integer; out CanvasHeight: Integer);
+function DetectRectsOverlap(const Rects: TArray<TJamRect>): Boolean;
+var
+  i, j, X, count: Integer;
+  errorMessage: string;
+  intersectItem: TJamRectIntersects;
+
+begin
+
+  Result := False;
+
+  if Assigned(IntersectList) then
+    IntersectList.Clear
+  else
+    IntersectList := TList<TJamRectIntersects>.Create;
+
+  for i := 0 to High(Rects) do
+    for j := i + 1 to High(Rects) do
+      if RectsOverlap(Rects[i], Rects[j]) then
+      begin
+        Result := True;
+        intersectItem.JamID := Rects[i].jamid;
+        intersectItem.intersectID := Rects[j].jamid;
+        IntersectList.add(intersectItem);
+      end;
+
+
+end;
+
+procedure PackRects(var Rects: TArray<TJamRect>; CanvasWidth: Integer;
+  out CanvasHeight: Integer);
 var
   i: Integer;
   CurX, CurY: Integer;
   RowHeight: Integer;
 begin
   // 1. Sort by size (largest first)
-  TArray.Sort<TJamRect>(Rects,
-    TComparer<TJamRect>.Construct(
-      function(const A, B: TJamRect): Integer
-      var
-        AreaA, AreaB: Integer;
-      begin
-        AreaA := A.Width * A.Height;
-        AreaB := B.Width * B.Height;
-        Result := AreaB - AreaA; // biggest first
-      end));
+  TArray.Sort<TJamRect>(Rects, TComparer<TJamRect>.Construct(
+    function(const A, B: TJamRect): Integer
+    var
+      AreaA, AreaB: Integer;
+    begin
+      AreaA := A.Width * A.Height;
+      AreaB := B.Width * B.Height;
+      Result := AreaB - AreaA; // biggest first
+    end));
 
   CurX := 0;
   CurY := 0;
@@ -681,6 +733,5 @@ begin
   // 3. Final canvas height
   CanvasHeight := CurY + RowHeight;
 end;
-
 
 end.

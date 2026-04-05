@@ -202,6 +202,9 @@ type
     N17: TMenuItem;
     JamAnalysis1: TMenuItem;
     SaveDecryptedJAM: TMenuItem;
+    N18: TMenuItem;
+    autoPackTexs: TMenuItem;
+    undoTimer: TTimer;
     procedure JamTreeChange(Sender: TObject; Node: TTreeNode);
     procedure PaintBoxPalettePaint(Sender: TObject);
     procedure btnLoadJamClick(Sender: TObject);
@@ -247,7 +250,6 @@ type
     procedure mainMenuAddTextureClick(Sender: TObject);
     procedure mainMenuImportTextureClick(Sender: TObject);
     procedure timer_JamRedrawPalsTimer(Sender: TObject);
-    procedure Button1Click(Sender: TObject);
     procedure timer_redrawTreeTimer(Sender: TObject);
     procedure ToolButton1Click(Sender: TObject);
     procedure popUpDeleteTextureClick(Sender: TObject);
@@ -341,6 +343,8 @@ type
     procedure JamAnalysis1Click(Sender: TObject);
     procedure SaveDecryptedJAMClick(Sender: TObject);
     procedure mainMenuImportCanvasClick(Sender: TObject);
+    procedure autoPackTexsClick(Sender: TObject);
+    procedure undoTimerTimer(Sender: TObject);
 
   public
     FJamFile: TJamFile;
@@ -386,10 +390,14 @@ type
     procedure UpdateUIData(id: integer);
     procedure ConvertJAM(output: TJamType);
     procedure DeleteTexture();
+    procedure JamModified(modified: boolean);
+    function JamSanityCheck(): boolean;
     function HitTestResizeZone(X, Y, EntryX, EntryY, EntryW, EntryH: integer)
       : TResizeMode;
 
     procedure genMask();
+
+    procedure JamSanityCheckInform(onSave: boolean);
 
     function AddJamTreeNode(Tree: TTreeView; Parent: TTreeNode;
       const Caption: string; data: integer; jamID: integer; editNode: boolean;
@@ -631,6 +639,7 @@ end;
 procedure TFormMain.MainMenu1Change(Sender: TObject; Source: TMenuItem;
   Rebuild: boolean);
 begin
+
   if boolHWJAM then
   begin
     if not Clipboard.HasFormat(ClipboardHWJAM) then
@@ -646,6 +655,13 @@ end;
 
 procedure TFormMain.SaveDecryptedJAMClick(Sender: TObject);
 begin
+
+  if JamSanityCheck then
+  begin
+    JamSanityCheckInform(true);
+    Exit;
+  end;
+
   dlgSaveJam.filename := FJamFile.JamFileName + '.jamdec';
 
   if dlgSaveJam.Execute then
@@ -938,6 +954,54 @@ begin
   UpdateMRU;
 end;
 
+procedure TFormMain.autoPackTexsClick(Sender: TObject);
+var
+  JamRects: TArray<TJamRect>;
+  i: integer;
+begin
+
+  PushUndoState;
+  if boolHWJAM then
+  begin
+    FHWJamFile.BuildRect_HW(FHWJamFile, JamRects);
+    PackRects(JamRects, 256, FHWJamFile.canvasHeight);
+
+    for i := 0 to high(JamRects) do
+    begin
+      begin
+        FHWJamFile.FEntries[JamRects[i].index].FInfo.X := JamRects[i].X;
+
+        FHWJamFile.FEntries[JamRects[i].index].FInfo.Y := JamRects[i].Y;
+      end;
+
+    end;
+
+  end
+  else
+  begin
+    FJamFile.BuildRect_SW(FJamFile, JamRects);
+    PackRects(JamRects, 256, FJamFile.canvasHeight);
+
+    for i := 0 to high(JamRects) do
+    begin
+
+      begin
+        FJamFile.FEntries[JamRects[i].index].FInfo.X := JamRects[i].X;
+
+        FJamFile.FEntries[JamRects[i].index].FInfo.Y := JamRects[i].Y;
+      end;
+
+    end;
+
+  end;
+
+  timer_redrawTree.Enabled := true;
+
+  RefreshCanvas;
+  JamModified(true);
+
+end;
+
 procedure TFormMain.RecentFileClick(Sender: TObject);
 var
   filename: string;
@@ -985,8 +1049,7 @@ begin
 
   RefreshCanvas;
   TreeReDraw;
-  boolJamModified := true;
-
+  JamModified(true);
 end;
 
 function TFormMain.AddJamTreeNode(Tree: TTreeView; Parent: TTreeNode;
@@ -1727,8 +1790,11 @@ begin
     freeandnil(FJamFile);
   end;
 
+  boolJamLoaded := false;
+
   boolTexSelected := false;
-  boolJamModified := false;
+
+  JamModified(false);
 
   if isHWJAM(filename) then
   begin
@@ -1800,6 +1866,8 @@ begin
     mainMenuSaveAs.Enabled := true;
     menuDrawOutlines.Enabled := true;
     ResetZoom1.Enabled := true;
+
+    autoPackTexs.Enabled := boolJamIssues;
 
     if boolHWJAM then
     begin
@@ -1952,6 +2020,12 @@ begin
   DoUndo;
 end;
 
+procedure TFormMain.undoTimerTimer(Sender: TObject);
+begin
+undoTimer.Enabled := false;
+boolUndo := true;
+end;
+
 procedure TFormMain.btnLoadJamClick(Sender: TObject);
 begin
 
@@ -2008,23 +2082,18 @@ end;
 procedure TFormMain.btnSaveJamClick(Sender: TObject);
 begin
 
+  if JamSanityCheck then
+  begin
+    JamSanityCheckInform(true);
+    Exit;
+  end;
+
   if boolHWJAM then
     FHWJamFile.SaveToFile(FHWJamFile.JamFullPath)
   else
     FJamFile.SaveToFile(FJamFile.JamFullPath, false);
 
-  boolJamModified := false;
-end;
-
-procedure TFormMain.Button1Click(Sender: TObject);
-var
-  i: integer;
-begin
-
-  // for I := 0 to FJamFile.FEntries.Count - 1 do
-  FJamFile.EncodeCanvas();
-
-  ImageEntry.Picture.Bitmap := FJamFile.DrawJamCanvas(false);
+  JamModified(false);
 end;
 
 procedure TFormMain.genMask;
@@ -2095,7 +2164,7 @@ begin
 
     RefreshCanvas;
     TreeReDraw;
-    boolJamModified := true;
+    JamModified(true);
   end
   else
   begin
@@ -2108,7 +2177,7 @@ begin
     RefreshCanvas;
     TreeReDraw;
 
-    boolJamModified := true;
+    JamModified(true);
 
   end;
 
@@ -2474,7 +2543,7 @@ end;
 
 procedure TFormMain.ShowHintInStatusBar(Sender: TObject);
 begin
-  StatusBar1.SimpleText := GetLongHint(Application.Hint);
+  StatusBar1.Panels[0].Text := GetLongHint(Application.Hint);
 end;
 
 procedure TFormMain.MsgHandler(var Msg: TMsg; var Handled: boolean);
@@ -2638,7 +2707,7 @@ begin
         timer_redrawTree.Enabled := false;
         timer_redrawTree.Enabled := true;
         RefreshCanvas;
-        boolJamModified := true;
+        JamModified(true);
 
         Handled := true; // We handled this movement key
       end;
@@ -2662,6 +2731,8 @@ begin
 
   SWRedoStack := TStack<TJamFile>.Create;
   HWRedoStack := TStack<THWJamFile>.Create;
+
+  boolUndo := true;
 
   Application.OnHint := ShowHintInStatusBar;
   SelectedTextureList := TList<integer>.Create;
@@ -2692,6 +2763,8 @@ begin
   boolWidthChange := false;
   boolHeightChange := false;
   boolIDChange := false;
+
+  boolJamIssues := false;
 
   generatePal := false;
 
@@ -2816,6 +2889,12 @@ begin
     end;
 
     SWRedoStack.Push(FJamFile.Clone);
+
+    if SWRedoStack.count = 0 then
+    redo1.Enabled := false
+    else
+    redo1.Enabled := true;
+
     // Free current file
     FJamFile.Free;
 
@@ -2826,7 +2905,7 @@ begin
 
   RefreshCanvas;
   TreeReDraw;
-  boolJamModified := true;
+  JamModified(true);
 
 end;
 
@@ -3394,6 +3473,11 @@ var
   newWidth, newHeight: integer;
 begin
 
+  JamSanityCheck;
+  JamSanityCheckInform(false);
+
+  autoPackTexs.Enabled := boolJamIssues;
+
   if boolHWJAM = false then
     bmp := FJamFile.DrawFullJam(true);
 
@@ -3755,6 +3839,7 @@ begin
   timer_redrawTree.Enabled := false;
   UpdatingFromCode := true;
   TreeReDraw;
+
   UpdatingFromCode := false;
 end;
 
@@ -3904,7 +3989,7 @@ begin
 
     DrawTree;
     SelectTreeTex;
-    boolJamModified := true;
+    JamModified(true);
 
     UpdatingFromCode := false;
 
@@ -3936,7 +4021,7 @@ begin
 
     DrawTree;
     SelectTreeTex;
-    boolJamModified := true;
+    JamModified(true);
 
     UpdatingFromCode := false;
 
@@ -3948,6 +4033,13 @@ end;
 
 procedure TFormMain.mainMenuSaveAsClick(Sender: TObject);
 begin
+
+  if JamSanityCheck then
+  begin
+    JamSanityCheckInform(true);
+    Exit;
+  end;
+
   if boolHWJAM then
     dlgSaveJam.filename := FHWJamFile.JamFileName + '.jam'
   else
@@ -3957,16 +4049,21 @@ begin
   begin
     if boolHWJAM then
     begin
-
-      FHWJamFile.SaveToFile(dlgSaveJam.filename)
+      FHWJamFile.SaveToFile(dlgSaveJam.filename);
+      FHWJamFile.JamFileName :=
+        lowercase(ChangeFileExt(ExtractFileName(dlgSaveJam.filename), ''));
+      FHWJamFile.JamFullPath := dlgSaveJam.filename;
     end
     else
     begin
-
       FJamFile.SaveToFile(dlgSaveJam.filename, false);
+      FJamFile.JamFileName :=
+        lowercase(ChangeFileExt(ExtractFileName(dlgSaveJam.filename), ''));
+      FJamFile.JamFullPath := dlgSaveJam.filename;
     end;
 
-    boolJamModified := false;
+    JamModified(false);
+
   end
   else
     // user cancelled the Save As dialog
@@ -4024,7 +4121,7 @@ begin
         SelectTreeTex;
 
         UpdatingFromCode := false;
-        boolJamModified := true;
+        JamModified(true);
       end
       else
       begin
@@ -4040,7 +4137,7 @@ begin
         // DrawTexture;
         DrawTree;
         SelectTreeTex;
-        boolJamModified := true;
+        JamModified(true);
 
         UpdatingFromCode := false;
       end;
@@ -4109,7 +4206,7 @@ begin
 
   DrawTree;
   SelectTreeTex;
-  boolJamModified := true;
+  JamModified(true);
 
   UpdatingFromCode := false;
 
@@ -4349,7 +4446,7 @@ begin
   end;
   DeSelectTexture();
 
-  boolJamModified := true;
+  JamModified(true);
 
   RefreshPalette;
   RefreshCanvas;
@@ -4473,7 +4570,15 @@ begin
     (not boolHWJAM and (id >= FJamFile.Entries.Count)) then
     Exit;
 
+  if boolUndo then
   PushUndoState;
+
+  if boolUndo = true then
+  begin
+  undoTimer.Enabled := true;
+  boolUndo := false;
+  end;
+
 
   if boolHWJAM then
   begin
@@ -4609,7 +4714,7 @@ begin
   timer_JamRedrawPals.Enabled := true;
 
   RefreshCanvas;
-  boolJamModified := true;
+  JamModified(true);
 
   boolXChange := false;
   boolYChange := false;
@@ -4624,14 +4729,93 @@ begin
 end;
 
 procedure TFormMain.UpdateCaption();
+var
+  modText: string;
 begin
   Caption := Application.Title;
 
   if boolJamLoaded then
-    if boolHWJAM then
-      Caption := Format('%s - %s', [FHWJamFile.JamFullPath, Application.Title])
+  begin
+    if boolJamModified then
+      modText := '*'
     else
-    Caption := Format('%s - %s', [FJamFile.JamFullPath, Application.Title])
+      modText := '';
+
+    if boolHWJAM then
+      Caption := Format('%s%s- %s', [FHWJamFile.JamFullPath, modText,
+        Application.Title])
+    else
+      Caption := Format('%s%s- %s', [FJamFile.JamFullPath, modText,
+        Application.Title])
+  end;
+end;
+
+function TFormMain.JamSanityCheck: boolean;
+var
+  JamRects: TArray<TJamRect>;
+  i: integer;
+begin
+
+  if boolHWJAM then
+  begin
+
+    FHWJamFile.BuildRect_HW(FHWJamFile, JamRects);
+    Result := DetectRectsOverlap(JamRects);
+    boolJamIssues := Result;
+
+  end
+  else
+  begin
+
+    FJamFile.BuildRect_SW(FJamFile, JamRects);
+
+    Result := DetectRectsOverlap(JamRects);
+    boolJamIssues := Result;
+
+  end;
+
+end;
+
+procedure TFormMain.JamSanityCheckInform(onSave: boolean);
+var
+  errorMessage: string;
+  X: integer;
+begin
+
+  errorMessage := 'Jam Sanity Check: All clear';
+
+  if onSave then
+  begin
+    errorMessage := 'The following textures are interecting: ' + sLineBreak +
+      sLineBreak;
+
+    for X := 0 to IntersectList.Count - 1 do
+      errorMessage := errorMessage + IntToStr(IntersectList[X].jamID) + ' ' +
+        IntToStr(IntersectList[X].intersectID) + sLineBreak;
+
+    ShowMessage(errorMessage);
+  end
+  else
+  begin
+    if boolJamIssues then
+    begin
+      errorMessage := 'Jam Sanity Check: Textures';
+      for X := 0 to IntersectList.Count - 1 do
+        errorMessage := Format('%s %d, ',
+          [errorMessage, IntersectList[X].jamID]);
+
+      errorMessage := errorMessage + ' have intersections';
+    end;
+  end;
+
+  StatusBar1.Panels[1].Text := errorMessage;
+end;
+
+procedure TFormMain.JamModified(modified: boolean);
+begin
+  boolJamModified := modified;
+  if boolJamLoaded then
+    UpdateCaption;
 end;
 
 end.

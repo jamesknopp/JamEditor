@@ -5,7 +5,6 @@ interface
 uses
   Winapi.Windows, System.SysUtils,
   System.Classes, Vcl.Graphics, ShlWapi,
-  // for ExtractFilePath (or ExtractFileDir)
   System.IOUtils;
 
 function ClampInt(const Value, MinValue, MaxValue: Integer): Integer;

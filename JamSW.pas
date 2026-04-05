@@ -1043,7 +1043,7 @@ begin
     bmp.canvas.Unlock;
 
     if boolRcrJam then
-      Result := ExtractColumns8Bit(bmp, boolRCRDrawMode)
+      Result := DeinterlaceRCR(bmp, boolRCRDrawMode)
     else
       Result := bmp;
   except
@@ -1373,7 +1373,7 @@ begin
     for i := 0 to canvasHeight - 1 do
       Move(Raw[i * canvasWidth], tempRCR.ScanLine[i]^, canvasWidth);
 
-    Result := ExtractColumns8Bit(tempRCR, odd);
+    Result := DeinterlaceRCR(tempRCR, odd);
 
   except
     Result.free;
@@ -2152,7 +2152,8 @@ begin
     Rects[i].Y := Jam.FEntries[i].FInfo.Y;
     Rects[i].Width := Jam.FEntries[i].FInfo.Width;
     Rects[i].Height := Jam.FEntries[i].FInfo.Height;
-    Rects[i].Index := i;
+    Rects[i].JamID := Jam.FEntries[i].FInfo.JamID;
+    rects[i].index := i;
   end;
 end;
 
