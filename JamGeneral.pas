@@ -26,6 +26,21 @@ const
   dx: array [0 .. 3] of Integer = (1, -1, 0, 0);
   dy: array [0 .. 3] of Integer = (0, 0, 1, -1);
 
+
+type
+  TRow = record
+    Y: Integer;
+    Height: Integer;
+    UsedWidth: Integer;
+  end;
+
+  TGap = record
+    X: Integer;
+    Y: Integer;
+    Width: Integer;
+    Height: Integer;
+  end;
+
 type
   THWJamHeader = packed record
     NumItems: Word;
@@ -50,26 +65,6 @@ type
       word16b: byte;
     NumFrames: Integer; // = 1 shl FrameCountExp
   end;
-
-  // THWRawJamEntryInfo = packed record
-  // PosRawX: Word; // 0
-  // PosRawY: Word; // 1
-  // Width: Word; // 2
-  // Height: Word; // 3
-  // scaleX: byte; // 4
-  // scaleY: byte; // 4
-  // scaleFlag: byte; // 5
-  // scaleFactor: byte; // 5
-  // ImagePtr: Word; // 6
-  // Idx0E: Word; // 7 totally unk
-  // PaletteSizeDiv4: Word; // 8
-  // JamID: Word; // 9
-  // jamflags: Word; // 10 flags
-  // Idx16: byte; // 11 untex color 1; entry in palette
-  // Idx17: byte; // 11 untext color 2; entry in palette
-  // Idx18: array [0 .. 7] of byte; // 12-16
-  // // 3,4 and 6 seem to be used in car liveries (gp3)... maybe load up all JAM files and create CSVs with all the data to review??
-  // end;
 
   TJamHeader = packed record
     NumItems: Word;
@@ -104,6 +99,7 @@ type
     Width, Height: Integer;
     index: Integer;
     JamID: integer;
+    size: integer;
   end;
 
   TJamRectIntersects = record
@@ -175,6 +171,8 @@ var
 
   intJamMaxWidth: Integer;
   intJamMaxHeight: Integer;
+
+  boolAutoLayout : boolean;
 
   boolRcrJam: Boolean;
   booljipMode: Boolean;
@@ -690,50 +688,198 @@ end;
 procedure PackRects(var Rects: TArray<TJamRect>; CanvasWidth: Integer;
   out CanvasHeight: Integer);
 var
-  i: Integer;
-  CurX, CurY: Integer;
-  RowHeight: Integer;
+  Rows: TList<TRow>;
+  Gaps: TList<TGap>;
+  i, j: Integer;
+  Row: TRow;
+  Gap, NewGap: TGap;
+  BestRow, BestGap: Integer;
+  Score, BestScore: Integer;
+  Placed: Boolean;
+  RemainingWidth: Integer;
+  TailCount: Integer;
 begin
-  // 1. Sort by size (largest first)
+  // 🔥 Sort by height DESC, width DESC
   TArray.Sort<TJamRect>(Rects, TComparer<TJamRect>.Construct(
     function(const A, B: TJamRect): Integer
-    var
-      AreaA, AreaB: Integer;
     begin
-      AreaA := A.Width * A.Height;
-      AreaB := B.Width * B.Height;
-      Result := AreaB - AreaA; // biggest first
+      if B.Height <> A.Height then
+        Exit(B.Height - A.Height);
+      Result := B.Width - A.Width;
     end));
 
-  CurX := 0;
-  CurY := 0;
-  RowHeight := 0;
-
-  // 2. Place each rect
-  for i := 0 to High(Rects) do
-  begin
-    // If it doesn't fit in current row → new row
-    if (CurX + Rects[i].Width) > CanvasWidth then
+  Rows := TList<TRow>.Create;
+  Gaps := TList<TGap>.Create;
+  try
+    for i := 0 to High(Rects) do
     begin
-      CurX := 0;
-      Inc(CurY, RowHeight);
-      RowHeight := 0;
+      Placed := False;
+
+      // =====================================================
+      // 1. GAP FIT (best fit)
+      // =====================================================
+      BestGap := -1;
+      BestScore := MaxInt;
+
+      for j := 0 to Gaps.Count - 1 do
+      begin
+        Gap := Gaps[j];
+
+        if (Rects[i].Width <= Gap.Width) and
+           (Rects[i].Height <= Gap.Height) then
+        begin
+          Score := Min(
+            Gap.Width - Rects[i].Width,
+            Gap.Height - Rects[i].Height
+          );
+
+          if Score < BestScore then
+          begin
+            BestScore := Score;
+            BestGap := j;
+          end;
+        end;
+      end;
+
+      if BestGap <> -1 then
+      begin
+        Gap := Gaps[BestGap];
+
+        Rects[i].X := Gap.X;
+        Rects[i].Y := Gap.Y;
+
+        // Split gap (right)
+        if Gap.Width > Rects[i].Width then
+        begin
+          NewGap.X := Gap.X + Rects[i].Width;
+          NewGap.Y := Gap.Y;
+          NewGap.Width := Gap.Width - Rects[i].Width;
+          NewGap.Height := Rects[i].Height;
+          Gaps.Add(NewGap);
+        end;
+
+        // Split gap (bottom)
+        if Gap.Height > Rects[i].Height then
+        begin
+          NewGap.X := Gap.X;
+          NewGap.Y := Gap.Y + Rects[i].Height;
+          NewGap.Width := Gap.Width;
+          NewGap.Height := Gap.Height - Rects[i].Height;
+          Gaps.Add(NewGap);
+        end;
+
+        Gaps.Delete(BestGap);
+        Continue;
+      end;
+
+      // =====================================================
+      // 2. BEST ROW FIT
+      // =====================================================
+      BestRow := -1;
+      BestScore := MaxInt;
+
+      for j := 0 to Rows.Count - 1 do
+      begin
+        Row := Rows[j];
+
+        if (Rects[i].Height <= Row.Height) and
+           (Row.UsedWidth + Rects[i].Width <= CanvasWidth) then
+        begin
+          Score := Row.Height - Rects[i].Height;
+
+          if Score < BestScore then
+          begin
+            BestScore := Score;
+            BestRow := j;
+          end;
+        end;
+      end;
+
+      if BestRow <> -1 then
+      begin
+        Row := Rows[BestRow];
+
+        Rects[i].X := Row.UsedWidth;
+        Rects[i].Y := Row.Y;
+
+        // Create vertical gap
+        if Rects[i].Height < Row.Height then
+        begin
+          NewGap.X := Row.UsedWidth;
+          NewGap.Y := Row.Y + Rects[i].Height;
+          NewGap.Width := Rects[i].Width;
+          NewGap.Height := Row.Height - Rects[i].Height;
+          Gaps.Add(NewGap);
+        end;
+
+        Row.UsedWidth := Row.UsedWidth + Rects[i].Width;
+        Rows[BestRow] := Row;
+
+        Continue;
+      end;
+
+      // =====================================================
+      // 3. ANY ROW WIDTH
+      // =====================================================
+      for j := 0 to Rows.Count - 1 do
+      begin
+        Row := Rows[j];
+        RemainingWidth := CanvasWidth - Row.UsedWidth;
+
+        if (Rects[i].Width <= RemainingWidth) and
+           (Rects[i].Height <= Row.Height) then
+        begin
+          Rects[i].X := Row.UsedWidth;
+          Rects[i].Y := Row.Y;
+
+          if Rects[i].Height < Row.Height then
+          begin
+            NewGap.X := Row.UsedWidth;
+            NewGap.Y := Row.Y + Rects[i].Height;
+            NewGap.Width := Rects[i].Width;
+            NewGap.Height := Row.Height - Rects[i].Height;
+            Gaps.Add(NewGap);
+          end;
+
+          Row.UsedWidth := Row.UsedWidth + Rects[i].Width;
+          Rows[j] := Row;
+
+          Placed := True;
+          Break;
+        end;
+      end;
+
+      if Placed then
+        Continue;
+
+      // =====================================================
+      // 4. NEW ROW
+      // =====================================================
+      Row.Y := 0;
+      if Rows.Count > 0 then
+        Row.Y := Rows.Last.Y + Rows.Last.Height;
+
+      Row.Height := Rects[i].Height;
+      Row.UsedWidth := Rects[i].Width;
+
+      Rects[i].X := 0;
+      Rects[i].Y := Row.Y;
+
+      Rows.Add(Row);
     end;
 
-    // Place rect
-    Rects[i].X := CurX;
-    Rects[i].Y := CurY;
+    // =====================================================
+    // 🔥 FINAL HEIGHT
+    // =====================================================
+    CanvasHeight := 0;
+    for i := 0 to Rows.Count - 1 do
+      CanvasHeight := Max(CanvasHeight, Rows[i].Y + Rows[i].Height);
 
-    // Advance X
-    Inc(CurX, Rects[i].Width);
 
-    // Track tallest item in row
-    if Rects[i].Height > RowHeight then
-      RowHeight := Rects[i].Height;
+  finally
+    Rows.Free;
+    Gaps.Free;
   end;
-
-  // 3. Final canvas height
-  CanvasHeight := CurY + RowHeight;
 end;
 
 end.

@@ -3,7 +3,7 @@ object optionsForm: ToptionsForm
   Top = 0
   BorderStyle = bsDialog
   Caption = 'Options'
-  ClientHeight = 387
+  ClientHeight = 516
   ClientWidth = 542
   Color = clBtnFace
   Font.Charset = DEFAULT_CHARSET
@@ -93,7 +93,7 @@ object optionsForm: ToptionsForm
   end
   object GroupBox2: TGroupBox
     Left = 8
-    Top = 175
+    Top = 311
     Width = 526
     Height = 162
     Caption = 'Jam Format Detection'
@@ -123,11 +123,28 @@ object optionsForm: ToptionsForm
   end
   object Button3: TButton
     Left = 240
-    Top = 352
+    Top = 479
     Width = 75
     Height = 25
     Caption = 'Close'
     TabOrder = 2
     OnClick = Button3Click
+  end
+  object GroupBox3: TGroupBox
+    Left = 8
+    Top = 175
+    Width = 526
+    Height = 130
+    Caption = 'General Options'
+    TabOrder = 3
+    object chkAutoArrange: TCheckBox
+      Left = 10
+      Top = 32
+      Width = 319
+      Height = 17
+      Caption = 'Auto Arrange Textures on Add && Delete'
+      TabOrder = 0
+      OnClick = chkAutoArrangeClick
+    end
   end
 end

@@ -120,6 +120,8 @@ type
 
     procedure CalculateImagePtrs;
 
+    procedure ChangeJamCanvasHeight(Height: integer);
+
     function RenderJamCanvas(UIUpdate: boolean): TBitmap;
 
     procedure DrawBaseCanvas(clean: boolean);
@@ -431,8 +433,8 @@ begin
   NewJam.JamFullPath := Self.JamFullPath;
   NewJam.JamPal := Self.JamPal;
 
-  NewJam.originalCanvas := TBitmap.create;
-  NewJam.originalCanvas.Assign(self.originalCanvas);
+  NewJam.originalCanvas := TBitmap.Create;
+  NewJam.originalCanvas.Assign(Self.originalCanvas);
 
   // copy entries
   for i := 0 to FEntries.Count - 1 do
@@ -499,6 +501,8 @@ begin
 
   JamFileName := sFilename;
   JamFullPath := sFilename;
+
+  DrawBaseCanvas(True);
 end;
 
 procedure TJamFile.SetGpxPal(boolGP2: boolean);
@@ -719,6 +723,7 @@ begin
       begin
 
         FTexture := DrawSingleTexture(FRawData, Length(FRawData), i, False);
+        FOriginalTex := DrawPalTexture(i);
         if preview = False then
         begin
           FOriginalTex := DrawPalTexture(i);
@@ -729,9 +734,9 @@ begin
     end;
 
   if boolJipMode then
-  DrawBaseCanvas(false)
+    DrawBaseCanvas(False)
   else
-  DrawBaseCanvas(true);
+    DrawBaseCanvas(True);
 
   JamFileName := sFilename;
   JamFullPath := FileName;
@@ -1264,9 +1269,9 @@ begin
     JamBMP.Palette := CreateGPxPal;
     JamBMP.Width := 256;
     JamBMP.Height := FHeader.JamTotalHeight;
-    JamBMP.Canvas.Draw(0,0,originalCanvas);
+    JamBMP.canvas.Draw(0, 0, originalCanvas);
 
-   if boolRcrJam then
+    if boolRcrJam then
     begin
       JamBMP.Width := 512;
       JamBMP.Height := FHeader.JamTotalHeight div 2;
@@ -2172,6 +2177,7 @@ begin
     Rects[i].Width := Jam.FEntries[i].FInfo.Width;
     Rects[i].Height := Jam.FEntries[i].FInfo.Height;
     Rects[i].JamId := Jam.FEntries[i].FInfo.JamId;
+    Rects[i].Size := Rects[i].X * Rects[i].Y;
     Rects[i].Index := i;
   end;
 end;
@@ -2193,21 +2199,21 @@ var
   i: integer;
 begin
 
-     JamBMP := TBitmap.Create;
-      JamBMP.PixelFormat := pf8bit;
-      JamBMP.Palette := CreateGPxPal;
-      JamBMP.Width := 256;
-      JamBMP.Height := FHeader.JamTotalHeight;
+  JamBMP := TBitmap.Create;
+  JamBMP.PixelFormat := pf8bit;
+  JamBMP.Palette := CreateGPxPal;
+  JamBMP.Width := 256;
+  JamBMP.Height := FHeader.JamTotalHeight;
 
   try
     if clean then
     begin
-       JamBMP.Canvas.Lock;
+      JamBMP.canvas.lock;
       try
-        JamBMP.Canvas.Brush.Color := RGB(gpxPal[0].r, gpxPal[0].g, gpxPal[0].b);
-        JamBMP.Canvas.FillRect(Rect(0, 0, JamBMP.Width, JamBMP.Height));
+        JamBMP.canvas.Brush.Color := RGB(gpxPal[0].r, gpxPal[0].g, gpxPal[0].b);
+        JamBMP.canvas.FillRect(Rect(0, 0, JamBMP.Width, JamBMP.Height));
       finally
-        JamBMP.Canvas.Unlock;
+        JamBMP.canvas.Unlock;
       end;
     end
     else
@@ -2217,35 +2223,90 @@ begin
       JamBMP.Height := FHeader.JamTotalHeight;
       intJamMaxHeight := FHeader.JamTotalHeight;
 
-      JamBMP.Canvas.Lock;
+      JamBMP.canvas.lock;
       try
         for i := 0 to FEntries.Count - 1 do
         begin
-            JamBMP.Canvas.Brush.Color := RGB(gpxPal[0].r, gpxPal[0].g, gpxPal[0].b);
-          JamBMP.Canvas.FillRect(Rect(
-            FEntries[i].FInfo.X,
-            FEntries[i].FInfo.Y,
+          JamBMP.canvas.Brush.Color := RGB(gpxPal[0].r, gpxPal[0].g,
+            gpxPal[0].b);
+          JamBMP.canvas.FillRect(Rect(FEntries[i].FInfo.X, FEntries[i].FInfo.Y,
             FEntries[i].FInfo.X + FEntries[i].FInfo.Width,
-            FEntries[i].FInfo.Y + FEntries[i].FInfo.Height
-          ));
+            FEntries[i].FInfo.Y + FEntries[i].FInfo.Height));
         end;
       finally
-        JamBMP.Canvas.Unlock;
+        JamBMP.canvas.Unlock;
       end;
     end;
 
-    originalCanvas := TBitmap.create;
+    originalCanvas := TBitmap.Create;
     originalCanvas.Width := JamBMP.Width;
     originalCanvas.Height := JamBMP.Height;
     originalCanvas.PixelFormat := JamBMP.PixelFormat;
     originalCanvas.Palette := CreateGPxPal;
 
-    originalCanvas.Canvas.Draw(0,0,JamBmp);
+    originalCanvas.canvas.Draw(0, 0, JamBMP);
+
+  finally
+    JamBMP.free;
+  end;
+end;
+
+procedure TJamFile.ChangeJamCanvasHeight(Height: Integer);
+var
+  JamBMP: TBitmap;
+  i: Integer;
+begin
+  JamBMP := nil;
+      // Update header + metadata
+    FHeader.JamTotalHeight := Height;
+    canvasHeight := Height;
+
+  try
+
+    for i := 0 to 3 do
+    begin
+      if assigned(LevelIdx[i]) then
+        LevelIdx[i].Height := Height;
+    end;
+
+    // Resize raw buffer (NOTE: still naive, see below)
+    SetLength(FRawData, 256 * Height);
+
+    // Create temp bitmap
+    JamBMP := TBitmap.Create;
+    JamBMP.PixelFormat := pf8bit;
+    JamBMP.Palette := CreateGPxPal;
+    JamBMP.Width := 256;
+    JamBMP.Height := Height;
+
+    JamBMP.Canvas.Lock;
+    try
+      // Clear background
+      JamBMP.Canvas.Brush.Color := RGB(gpxPal[0].r, gpxPal[0].g, gpxPal[0].b);
+      JamBMP.Canvas.FillRect(Rect(0, 0, JamBMP.Width, JamBMP.Height));
+
+      // Copy old canvas into new (top-aligned)
+      if Assigned(originalCanvas) then
+        JamBMP.Canvas.Draw(0, 0, originalCanvas);
+    finally
+      JamBMP.Canvas.Unlock;
+    end;
+
+    // Resize original AFTER copy
+    originalCanvas.SetSize(256, Height);
+
+    originalCanvas.Canvas.Lock;
+    try
+      originalCanvas.Canvas.Draw(0, 0, JamBMP);
+    finally
+      originalCanvas.Canvas.Unlock;
+    end;
+
+    intJamMaxHeight := Height;
 
   finally
     JamBMP.Free;
   end;
 end;
-
 
 end.

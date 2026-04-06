@@ -2178,7 +2178,7 @@ object FormMain: TFormMain
     TabOrder = 1
     Transparent = True
     StyleName = 'Windows'
-    object ToolButton1: TToolButton
+    object toolbar_NEW: TToolButton
       Left = 4
       Top = 0
       Hint = 'Create New JAM'
@@ -2186,12 +2186,12 @@ object FormMain: TFormMain
       Margins.Top = 2
       Margins.Right = 2
       Margins.Bottom = 2
-      Caption = 'ToolButton1'
+      Caption = 'toolbar_NEW'
       ImageIndex = 0
       ImageName = 'new'
-      OnClick = ToolButton1Click
+      OnClick = toolbar_NEWClick
     end
-    object ToolButton2: TToolButton
+    object toolbar_OPEN: TToolButton
       Left = 31
       Top = 0
       Hint = 'Open JAM'
@@ -2199,7 +2199,7 @@ object FormMain: TFormMain
       Margins.Top = 2
       Margins.Right = 2
       Margins.Bottom = 2
-      Caption = 'ToolButton2'
+      Caption = 'toolbar_OPEN'
       ImageIndex = 1
       ImageName = 'open'
       OnClick = btnLoadJamClick
@@ -2590,6 +2590,7 @@ object FormMain: TFormMain
     Top = 34
     Width = 362
     Height = 660
+    VertScrollBar.Position = 436
     VertScrollBar.Tracking = True
     Align = alRight
     DoubleBuffered = False
@@ -2609,7 +2610,7 @@ object FormMain: TFormMain
     TabOrder = 4
     StyleName = 'Windows'
     object panel_JAMCanvas: TCategoryPanel
-      Top = 1184
+      Top = 748
       Height = 73
       Caption = 'JAM Canvas'
       DoubleBuffered = False
@@ -2641,14 +2642,11 @@ object FormMain: TFormMain
           Top = 10
           Width = 69
           Height = 22
-          Enabled = False
           MaxValue = 768
           MinValue = 32
           TabOrder = 0
           Value = 32
-          OnChange = tex_XChange
-          OnKeyDown = tex_XKeyDown
-          OnKeyUp = tex_XKeyUp
+          OnChange = canvasHeightChange
         end
         object Button5: TButton
           Left = 191
@@ -2662,7 +2660,7 @@ object FormMain: TFormMain
       end
     end
     object panel_RCRControls: TCategoryPanel
-      Top = 1092
+      Top = 656
       Height = 92
       Caption = 'RCR Controls'
       DoubleBuffered = False
@@ -2723,7 +2721,7 @@ object FormMain: TFormMain
       end
     end
     object panel_PalEdit: TCategoryPanel
-      Top = 817
+      Top = 381
       Height = 275
       Caption = 'GP2/GP3 SW Palette Creation'
       DoubleBuffered = False
@@ -2938,7 +2936,7 @@ object FormMain: TFormMain
       end
     end
     object panel_ScaleParameters: TCategoryPanel
-      Top = 585
+      Top = 149
       Height = 232
       Caption = 'Scaling Parameters'
       DoubleBuffered = False
@@ -3048,7 +3046,7 @@ object FormMain: TFormMain
       end
     end
     object panel_TexFlags: TCategoryPanel
-      Top = 417
+      Top = -19
       Height = 168
       Caption = 'Texture Flags'
       DoubleBuffered = False
@@ -3100,7 +3098,7 @@ object FormMain: TFormMain
       end
     end
     object Panel_TexProperties: TCategoryPanel
-      Top = 281
+      Top = -155
       Height = 136
       Caption = 'Texture Properties'
       DoubleBuffered = False
@@ -3209,7 +3207,6 @@ object FormMain: TFormMain
           TabOrder = 3
           Value = 0
           OnChange = tex_XChange
-          OnKeyDown = tex_XKeyDown
           OnKeyUp = tex_XKeyUp
         end
         object tex_Y: TSpinEdit
@@ -3229,7 +3226,7 @@ object FormMain: TFormMain
       end
     end
     object panel_TexturePreview: TCategoryPanel
-      Top = 0
+      Top = -436
       Height = 281
       Caption = 'Texture Preview && Palette'
       DoubleBuffered = False
@@ -3351,6 +3348,7 @@ object FormMain: TFormMain
         Caption = 'New'
         Hint = 'New JAM'
         ShortCut = 16462
+        OnClick = toolbar_NEWClick
       end
       object Open1: TMenuItem
         Caption = 'Open'

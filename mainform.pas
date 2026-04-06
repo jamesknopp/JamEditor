@@ -80,8 +80,8 @@ type
     Help1: TMenuItem;
     About1: TMenuItem;
     ToolBar1: TToolBar;
-    ToolButton1: TToolButton;
-    ToolButton2: TToolButton;
+    toolbar_NEW: TToolButton;
+    toolbar_OPEN: TToolButton;
     toolBar_Save: TToolButton;
     ToolButton4: TToolButton;
     toolBar_AddTexture: TToolButton;
@@ -251,7 +251,7 @@ type
     procedure mainMenuImportTextureClick(Sender: TObject);
     procedure timer_JamRedrawPalsTimer(Sender: TObject);
     procedure timer_redrawTreeTimer(Sender: TObject);
-    procedure ToolButton1Click(Sender: TObject);
+    procedure toolbar_NEWClick(Sender: TObject);
     procedure popUpDeleteTextureClick(Sender: TObject);
 
     procedure mainMenuExportCanvasClick(Sender: TObject);
@@ -349,6 +349,7 @@ type
       Shift: TShiftState; X, Y: integer);
     procedure tex_XMouseUp(Sender: TObject; Button: TMouseButton;
       Shift: TShiftState; X, Y: integer);
+    procedure canvasHeightChange(Sender: TObject);
 
   public
     FJamFile: TJamFile;
@@ -438,6 +439,7 @@ var
   boolScaleYChange: boolean;
   boolScaleChange: boolean;
   boolScaleFlagsChange: boolean;
+  boolCanvasChange: boolean;
 
 implementation
 
@@ -1012,6 +1014,9 @@ procedure TFormMain.RecentFileClick(Sender: TObject);
 var
   filename: string;
 begin
+
+  CheckJamModified();
+
   filename := (Sender as TMenuItem).Hint;
   if FileExists(filename) then
   begin
@@ -1382,7 +1387,7 @@ begin
 
 end;
 
-procedure TFormMain.ToolButton1Click(Sender: TObject);
+procedure TFormMain.toolbar_NEWClick(Sender: TObject);
 begin
   CheckJamModified();
 
@@ -1455,6 +1460,10 @@ begin
   if not boolJamLoaded then
     Exit;
 
+  if intSelectedTexture = -1 then
+  exit;
+
+
   i := intSelectedTexture;
   if boolHWJAM then
   begin
@@ -1479,8 +1488,9 @@ begin
     boolSimpifyAllPals := chkBoxSimpPal.Checked;
     boolProtectTrans := chkBoxTrans.Checked;
 
-    tmpCanvas := TBitmap.Create;
+
     try
+      tmpCanvas := TBitmap.Create;
       tmpCanvas.Assign(FJamFile.FEntries[i].FOriginalTex);
 
       tmpCanvas := StretchF(tmpCanvas, FJamFile.FEntries[i].FInfo.Width,
@@ -1877,6 +1887,8 @@ begin
   begin
     SaveDecryptedJAM.Visible := false;
     toolbar_drawOutlines.Enabled := true;
+    toolbar_drawOutlines.down := boolDrawOutlines;
+    menuDrawOutlines.Checked := boolDrawOutlines;
     toolBar_Save.Enabled := true;
     toolBar_AddTexture.Enabled := true;
     toolbarZoomIN.Enabled := true;
@@ -2494,6 +2506,36 @@ begin
   TreeReDraw;
 end;
 
+procedure TFormMain.canvasHeightChange(Sender: TObject);
+begin
+
+//  if UpdatingFromCode or userisTyping then
+//    Exit;
+
+  boolCanvasChange := true;
+//  updatingFromCode := true;
+
+  if boolHWJAM then
+  begin
+
+  end
+  else
+  begin
+  FJamFile.ChangeJamCanvasHeight(canvasHeight.Value);
+  end;
+
+  timer_JamRedrawPals.Enabled := false;
+  timer_redrawTree.Enabled := false;
+
+  timer_redrawTree.Enabled := true;
+
+  timer_JamRedrawPals.Enabled := true;
+
+  RefreshCanvas;
+  JamModified(true);
+//   updatingFromCode := false;
+end;
+
 procedure TFormMain.canvasPopupMenuPopup(Sender: TObject);
 begin
 
@@ -2803,6 +2845,8 @@ begin
   boolHeightChange := false;
   boolIDChange := false;
 
+  boolCanvasChange := false;
+
   boolJamIssues := false;
 
   generatePal := false;
@@ -2836,6 +2880,9 @@ begin
       strGP2Location := Reg.ReadString('GP2Location');
       strGP3Location := Reg.ReadString('GP3Location');
       strGP32kLocation := Reg.ReadString('GP32kLocation');
+      boolAutoLayout := Reg.ReadBool('AutoLayout');
+      boolDrawOutlines := Reg.ReadBool('DrawOutlines');
+
       Reg.CloseKey;
     end;
   finally
@@ -2967,6 +3014,8 @@ begin
       Reg.WriteString('GP2Location', strGP2Location);
       Reg.WriteString('GP3Location', strGP3Location);
       Reg.WriteString('GP32kLocation', strGP32kLocation);
+      Reg.WriteBool('AutoLayout', boolAutoLayout);
+      Reg.WriteBool('DrawOutlines', boolDrawOutlines);
       Reg.CloseKey;
     end;
   finally
@@ -4186,8 +4235,8 @@ end;
 
 procedure TFormMain.AddNewTexture(Sender: TObject);
 var
-JamRects: TArray<TJamRect>;
-i : integer;
+  JamRects: TArray<TJamRect>;
+  i: integer;
 
 begin
   if importDialog.Execute then
@@ -4198,6 +4247,23 @@ begin
       if boolHWJAM then
       begin
         FHWJamFile.AddTexture(importDialog.filename);
+
+        if boolJipMode or boolAutoLayout then
+        begin
+          FHWJamFile.BuildRect_HW(FHWJamFile, JamRects);
+          PackRects(JamRects, 256, FHWJamFile.canvasHeight);
+
+          for i := 0 to high(JamRects) do
+          begin
+
+            begin
+              FHWJamFile.FEntries[JamRects[i].index].FInfo.X := JamRects[i].X;
+              FHWJamFile.FEntries[JamRects[i].index].FInfo.Y := JamRects[i].Y;
+            end;
+
+          end;
+        end;
+
         intSelectedTexture := FHWJamFile.FEntries.Count - 1;
 
         JamReGen;
@@ -4216,7 +4282,7 @@ begin
       begin
         FJamFile.AddTexture(importDialog.filename);
 
-        if boolJipMode then
+        if boolJipMode or boolAutoLayout then
         begin
           FJamFile.BuildRect_SW(FJamFile, JamRects);
           PackRects(JamRects, 256, FJamFile.canvasHeight);
@@ -4226,7 +4292,6 @@ begin
 
             begin
               FJamFile.FEntries[JamRects[i].index].FInfo.X := JamRects[i].X;
-
               FJamFile.FEntries[JamRects[i].index].FInfo.Y := JamRects[i].Y;
             end;
 
@@ -4363,6 +4428,8 @@ begin
     tex_width.Value := FHWJamFile.FEntries[id].FInfo.Width;
     tex_height.Value := FHWJamFile.FEntries[id].FInfo.height;
 
+    canvasheight.value := FHWJamFile.FHeader.JamTotalHeight;
+
     tex_flags.Enabled := true;
     for i := 0 to 15 do
       tex_flags.Checked[i] :=
@@ -4406,9 +4473,8 @@ begin
     texScaleX.Value := FJamFile.FEntries[id].FInfo.scaleX;
     texScaleY.Value := FJamFile.FEntries[id].FInfo.scaleY;
 
-    // texScale.Value := FJamFile.GetIDX0aScale(FJamFile.FEntries[id].FInfo.Idx0A);
-    // texScaleX.Value := FJamFile.GetIDX08_X(FJamFile.FEntries[id].FInfo.Idx08);
-    // texScaleY.Value := FJamFile.GetIDX08_Y(FJamFile.FEntries[id].FInfo.Idx08);
+    canvasheight.value := FJamFile.FHeader.JamTotalHeight;
+
     for i := 0 to 15 do
       tex_flags.Checked[i] :=
         UnPackFlag(FJamFile.FEntries[id].FInfo.jamFlags, i);
@@ -4528,6 +4594,7 @@ end;
 
 procedure TFormMain.DeleteTexture;
 var
+  JamRects: TArray<TJamRect>;
   i: integer;
 begin
 
@@ -4540,6 +4607,22 @@ begin
     for i := SelectedTextureList.Count - 1 downto 0 do
       FHWJamFile.DeleteTexture(SelectedTextureList[i]);
 
+    if boolJipMode or boolAutoLayout then
+    begin
+      FHWJamFile.BuildRect_HW(FHWJamFile, JamRects);
+      PackRects(JamRects, 256, FHWJamFile.canvasHeight);
+
+      for i := 0 to high(JamRects) do
+      begin
+
+        begin
+          FHWJamFile.FEntries[JamRects[i].index].FInfo.X := JamRects[i].X;
+          FHWJamFile.FEntries[JamRects[i].index].FInfo.Y := JamRects[i].Y;
+        end;
+
+      end;
+    end;
+
   end
   else
   begin
@@ -4548,6 +4631,22 @@ begin
       FJamFile.DeleteTexture(SelectedTextureList[i]);
 
     FJamFile.CalculateImagePtrs;
+
+    if boolJipMode or boolAutoLayout then
+    begin
+      FJamFile.BuildRect_SW(FJamFile, JamRects);
+      PackRects(JamRects, 256, FJamFile.canvasHeight);
+
+      for i := 0 to high(JamRects) do
+      begin
+
+        begin
+          FJamFile.FEntries[JamRects[i].index].FInfo.X := JamRects[i].X;
+          FJamFile.FEntries[JamRects[i].index].FInfo.Y := JamRects[i].Y;
+        end;
+
+      end;
+    end;
 
   end;
   DeSelectTexture();

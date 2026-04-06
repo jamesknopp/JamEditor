@@ -1095,6 +1095,7 @@ procedure THWJamFile.BuildRect_HW(Jam: THWJamFile; var Rects: TArray<TJamRect>);
       Rects[i].Width := Jam.FEntries[i].FInfo.Width;
       Rects[i].Height := Jam.FEntries[i].FInfo.Height;
       rects[i].jamid := Jam.FEntries[i].FInfo.JamID;
+      Rects[i].size := rects[i].x * rects[i].y;
       rects[i].index := i;
     end;
   end;

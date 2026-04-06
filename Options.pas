@@ -26,12 +26,15 @@ type
     edtGp32KLoc: TEdit;
     btnGP32kBrowse: TButton;
     Button3: TButton;
+    GroupBox3: TGroupBox;
+    chkAutoArrange: TCheckBox;
     procedure btnGP2BrowseClick(Sender: TObject);
     procedure btnGP3BrowseClick(Sender: TObject);
     procedure Button1Click(Sender: TObject);
     procedure FormShow(Sender: TObject);
     procedure Button3Click(Sender: TObject);
     procedure btnGP32kBrowseClick(Sender: TObject);
+    procedure chkAutoArrangeClick(Sender: TObject);
 
   private
     { Private declarations }
@@ -168,11 +171,18 @@ begin
   optionsForm.close;
 end;
 
+procedure ToptionsForm.chkAutoArrangeClick(Sender: TObject);
+begin
+boolAutoLayout := chkAutoArrange.checked;
+end;
+
 procedure ToptionsForm.FormShow(Sender: TObject);
 begin
   edtGP2Loc.text := strGP2Location;
   edtGp3Loc.text := strGP3Location;
   edtGp32KLoc.text := strGP32kLocation;
+
+  chkAutoArrange.Checked := boolAutoLayout;
 
 end;
 
