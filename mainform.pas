@@ -346,9 +346,9 @@ type
     procedure autoPackTexsClick(Sender: TObject);
     procedure undoTimerTimer(Sender: TObject);
     procedure tex_XMouseDown(Sender: TObject; Button: TMouseButton;
-      Shift: TShiftState; X, Y: Integer);
+      Shift: TShiftState; X, Y: integer);
     procedure tex_XMouseUp(Sender: TObject; Button: TMouseButton;
-      Shift: TShiftState; X, Y: Integer);
+      Shift: TShiftState; X, Y: integer);
 
   public
     FJamFile: TJamFile;
@@ -378,7 +378,7 @@ type
     procedure DrawTree;
     procedure SelectTexture(id: integer; treeupdate: boolean);
     procedure DeSelectTexture();
-    procedure NewJam(filename: string; hwJAM: boolean; height: integer);
+    procedure NewJam(filename: string; height: integer);
     procedure LoadJam(filename: string);
     procedure UpdateJamData(id: integer);
     procedure SelectTreeTex();
@@ -965,7 +965,7 @@ var
 begin
 
   if boolUndo then
-  PushUndoState;
+    PushUndoState;
 
   if boolHWJAM then
   begin
@@ -1372,7 +1372,7 @@ begin
       end
       else
       begin
-        tempBMP := FJamFile.DrawJamCanvas(false);
+        tempBMP := FJamFile.RenderJamCanvas(false);
         tempBMP.PixelFormat := pf8bit;
         tempBMP.Palette := creategpxpal;
         tempBMP.SaveToFile(exportDialog.filename);
@@ -1391,7 +1391,7 @@ begin
 
   boolTexSelected := false;
 
-  newJamDlg.newJamDialog.show;
+  newJamDlg.newJamDialog.ShowModal;
 
 end;
 
@@ -1497,7 +1497,6 @@ begin
         FJamFile.FEntries[i].FTexture := FJamFile.GenerateGPxBMP(tmpCanvas, i,
           intSimplifyMethod, intSimplifyThreshold, intBlurThreshold,
           boolSimpifyAllPals, boolProtectTrans);
-        generatePal := false;
 
       end
       else
@@ -1507,8 +1506,8 @@ begin
         else
         begin
           bmpPal := TBitmap.Create;
-          bmpPal.Assign(tmpCanvas);
-          bmpPal.PixelFormat := pf8bit;
+          // bmpPal.Assign(tmpCanvas);
+          // bmpPal.PixelFormat := pf8bit;
           bmpPal := CreateGPxPalBMP(tmpCanvas);
           bmpPal.Palette := creategpxpal;
           FJamFile.EncodeTexture(i, bmpPal);
@@ -1520,6 +1519,7 @@ begin
         FJamFile.CachePaletteBMP(i)
       else
         FJamFile.CachePaletteBMP(i);
+
       RefreshPalette;
       RefreshCanvas;
       DrawTexture;
@@ -1724,10 +1724,12 @@ begin
   end;
 end;
 
-procedure TFormMain.NewJam(filename: string; hwJAM: boolean; height: integer);
+procedure TFormMain.NewJam(filename: string; height: integer);
 var
   i: integer;
 begin
+
+  boolUndo := false;
 
   if Assigned(FHWJamFile) then
     freeandnil(FHWJamFile);
@@ -1735,7 +1737,7 @@ begin
   if Assigned(FJamFile) then
     freeandnil(FJamFile);
 
-  if hwJAM then
+  if boolHWJAM then
   begin
     boolHWJAM := true;
     if panel_PalPreview.Visible then
@@ -1748,7 +1750,6 @@ begin
   end
   else
   begin
-    boolHWJAM := false;
 
     FJamFile := TJamFile.Create;
 
@@ -1766,6 +1767,8 @@ begin
 
   boolJamLoaded := true;
 
+  boolJamModified := true;
+
   UISetup();
 
   DrawTree;
@@ -1777,6 +1780,8 @@ begin
   HWUndoStack.Clear;
   SWUndoStack.Clear;
 
+  boolUndo := true;
+
 end;
 
 procedure TFormMain.LoadJam(filename: string);
@@ -1785,8 +1790,8 @@ var
 begin
   boolUndo := false;
 
-  undo1.Enabled := false;
-  redo1.Enabled := false;
+  Undo1.Enabled := false;
+  Redo1.Enabled := false;
 
   HWUndoStack.Clear;
   SWUndoStack.Clear;
@@ -1859,7 +1864,6 @@ begin
     SetStretchBltMode(ImageCanvas.Canvas.Handle, HALFTONE);
   end;
 
-
   boolUndo := true;
 
 end;
@@ -1883,7 +1887,7 @@ begin
     menuDrawOutlines.Enabled := true;
     ResetZoom1.Enabled := true;
 
-    autoPackTexs.Enabled := boolJamIssues;
+    autoPackTexs.Enabled := true;
 
     if boolHWJAM then
     begin
@@ -2629,7 +2633,7 @@ begin
         VK_LEFT:
           begin
             if boolUndo then
-            PushUndoState;
+              PushUndoState;
             boolUndo := false;
             if boolHWJAM then
             begin
@@ -2654,7 +2658,7 @@ begin
         VK_RIGHT:
           begin
             if boolUndo then
-            PushUndoState;
+              PushUndoState;
             boolUndo := false;
             if boolHWJAM then
             begin
@@ -2679,7 +2683,7 @@ begin
         VK_UP:
           begin
             if boolUndo then
-            PushUndoState;
+              PushUndoState;
             boolUndo := false;
             if boolHWJAM then
             begin
@@ -2705,7 +2709,7 @@ begin
         VK_DOWN:
           begin
             if boolUndo then
-            PushUndoState;
+              PushUndoState;
             boolUndo := false;
             if boolHWJAM then
             begin
@@ -3513,7 +3517,6 @@ begin
     JamSanityCheck;
     JamSanityCheckInform(false);
 
-    autoPackTexs.Enabled := boolJamIssues;
   end;
 
   if boolHWJAM = false then
@@ -3706,12 +3709,12 @@ begin
 
   boolHeightChange := true;
 
-   if boolUndo then
-  PushUndoState;
+  if boolUndo then
+    PushUndoState;
 
   boolUndo := false;
-  UndoTimer.Enabled := false;
-  UndoTimer.Enabled := true;
+  undoTimer.Enabled := false;
+  undoTimer.Enabled := true;
 
   for i := 0 to SelectedTextureList.Count - 1 do
     UpdateJamData(SelectedTextureList[i]);
@@ -3782,12 +3785,12 @@ begin
 
   boolWidthChange := true;
 
-   if boolUndo then
-  PushUndoState;
+  if boolUndo then
+    PushUndoState;
 
   boolUndo := false;
-  UndoTimer.Enabled := false;
-  UndoTimer.Enabled := true;
+  undoTimer.Enabled := false;
+  undoTimer.Enabled := true;
 
   for i := 0 to SelectedTextureList.Count - 1 do
     UpdateJamData(SelectedTextureList[i]);
@@ -3822,11 +3825,11 @@ begin
     Exit;
   boolXChange := true;
   if boolUndo then
-  PushUndoState;
+    PushUndoState;
 
   boolUndo := false;
-  UndoTimer.Enabled := false;
-  UndoTimer.Enabled := true;
+  undoTimer.Enabled := false;
+  undoTimer.Enabled := true;
 
   for i := 0 to SelectedTextureList.Count - 1 do
     UpdateJamData(SelectedTextureList[i]);
@@ -3856,18 +3859,18 @@ begin
 end;
 
 procedure TFormMain.tex_XMouseDown(Sender: TObject; Button: TMouseButton;
-  Shift: TShiftState; X, Y: Integer);
+  Shift: TShiftState; X, Y: integer);
 begin
-    if boolUndo then
+  if boolUndo then
     PushUndoState;
 
-    boolUndo := false;
+  boolUndo := false;
 end;
 
 procedure TFormMain.tex_XMouseUp(Sender: TObject; Button: TMouseButton;
-  Shift: TShiftState; X, Y: Integer);
+  Shift: TShiftState; X, Y: integer);
 begin
-    boolUndo := true;
+  boolUndo := true;
 end;
 
 procedure TFormMain.tex_YChange(Sender: TObject);
@@ -3879,12 +3882,12 @@ begin
 
   boolYChange := true;
 
-   if boolUndo then
-  PushUndoState;
+  if boolUndo then
+    PushUndoState;
 
   boolUndo := false;
-  UndoTimer.Enabled := false;
-  UndoTimer.Enabled := true;
+  undoTimer.Enabled := false;
+  undoTimer.Enabled := true;
 
   for i := 0 to SelectedTextureList.Count - 1 do
     UpdateJamData(SelectedTextureList[i]);
@@ -4182,6 +4185,9 @@ begin
 end;
 
 procedure TFormMain.AddNewTexture(Sender: TObject);
+var
+JamRects: TArray<TJamRect>;
+i : integer;
 
 begin
   if importDialog.Execute then
@@ -4209,6 +4215,23 @@ begin
       else
       begin
         FJamFile.AddTexture(importDialog.filename);
+
+        if boolJipMode then
+        begin
+          FJamFile.BuildRect_SW(FJamFile, JamRects);
+          PackRects(JamRects, 256, FJamFile.canvasHeight);
+
+          for i := 0 to high(JamRects) do
+          begin
+
+            begin
+              FJamFile.FEntries[JamRects[i].index].FInfo.X := JamRects[i].X;
+
+              FJamFile.FEntries[JamRects[i].index].FInfo.Y := JamRects[i].Y;
+            end;
+
+          end;
+        end;
         JamReGen;
 
         intSelectedTexture := FJamFile.FEntries.Count - 1;
@@ -4654,7 +4677,7 @@ begin
     Exit;
 
   if boolUndo = true then
-  PushUndoState;
+    PushUndoState;
 
   if boolHWJAM then
   begin
@@ -4818,10 +4841,10 @@ begin
       modText := '';
 
     if boolHWJAM then
-      Caption := Format('%s%s- %s', [FHWJamFile.JamFullPath, modText,
+      Caption := Format('%s%s - %s', [FHWJamFile.JamFullPath, modText,
         Application.Title])
     else
-      Caption := Format('%s%s- %s', [FJamFile.JamFullPath, modText,
+      Caption := Format('%s%s - %s', [FJamFile.JamFullPath, modText,
         Application.Title])
   end;
 end;

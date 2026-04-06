@@ -111,7 +111,7 @@ type
   end;
 
 type
-  TJamType = (jamGP2, jamGP3SW, jamGP3HW);
+  TJamType = (jamGP2, jamGP3SW, jamGP3HW, jamJIP);
 
 var
   ClipboardJAM: uint;
@@ -207,6 +207,8 @@ var
   intSimplifyThreshold: Integer;
   intSimplifyDist: Integer;
   intBlurThreshold: Integer;
+
+  intUntitledCount: integer;
 
   boolSimpifyAllPals: Boolean;
   boolProtectTrans: Boolean;

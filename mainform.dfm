@@ -3231,7 +3231,7 @@ object FormMain: TFormMain
     object panel_TexturePreview: TCategoryPanel
       Top = 0
       Height = 281
-      Caption = 'Texture Preview & Palette'
+      Caption = 'Texture Preview && Palette'
       DoubleBuffered = False
       ParentDoubleBuffered = False
       TabOrder = 6

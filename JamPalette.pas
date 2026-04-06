@@ -4,7 +4,7 @@ interface
 
 uses System.SysUtils, System.Generics.Collections,
   Generics.Defaults, Winapi.Windows, Vcl.Graphics, System.Math,
-  GeneralHelpers, JamGeneral;
+  GeneralHelpers, JamGeneral, vcl.dialogs;
 
 type
   TLab = record
@@ -868,6 +868,7 @@ var
 begin
   // Prepare destination
   Dst := TBitmap.Create;
+  src.PixelFormat := pf24bit; //force input to be 24bit so scanline processes work correctly
   try
     Dst.PixelFormat := pf8bit;
     Dst.width := Src.width;

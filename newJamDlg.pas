@@ -50,8 +50,9 @@ begin
   FileName := Trim(strName.Text);
   if FileName.IsEmpty then
   begin
-    ShowMessage('Please enter a file name.');
-    Exit;
+    inc(intUntitledCount);
+    filename := format('untitled%d', [intUntitledCount]);
+
   end;
 
   // 2) Check for any invalid file‐name characters
@@ -86,7 +87,7 @@ begin
         boolJipMode := false;
         jamtype := jamGP2;
 
-        formmain.NewJam(FileName, false, intHeight.value);
+        formmain.NewJam(FileName, intHeight.value);
       end;
     1:
       begin
@@ -99,7 +100,7 @@ begin
         boolHWJAM := false;
         boolJipMode := false;
 
-        formmain.NewJam(FileName, false, intHeight.value);
+        formmain.NewJam(FileName, intHeight.value);
       end;
 
     2:
@@ -113,7 +114,7 @@ begin
         boolGP2JAM := false;
 
         boolJipMode := false;
-        formmain.NewJam(FileName, true, intHeight.value);
+        formmain.NewJam(FileName, intHeight.value);
 
       end;
     3:
@@ -121,20 +122,22 @@ begin
         for i := 0 to 255 do
           GPXPal[i] := Gp3Pal[i];
 
+        jamType := jamJIP;
+
         boolJipMode := true;
-        boolGP3JAM := true;
+        boolGP3JAM := false;
 
         boolGP2JAM := false;
         boolHWJAM := false;
-        boolJipMode := false;
 
-        formmain.NewJam(FileName, false, intHeight.value);
+        formmain.NewJam(FileName, intHeight.value);
 
       end;
 
   else
     ShowMessage('Please select a JAM type.');
   end;
+  boolrcrJAM := false;
   newJamDialog.close;
 
 end;

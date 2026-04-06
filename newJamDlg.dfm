@@ -12,15 +12,16 @@ object newJamDialog: TnewJamDialog
   Font.Height = -12
   Font.Name = 'Segoe UI'
   Font.Style = []
+  FormStyle = fsStayOnTop
   KeyPreview = True
-  Position = poMainFormCenter
+  Position = poScreenCenter
   StyleName = 'Windows'
   ShowInTaskBar = True
   OnKeyDown = FormKeyDown
   OnShow = FormShow
   TextHeight = 15
   object Label1: TLabel
-    Left = 16
+    Left = 8
     Top = 19
     Width = 79
     Height = 15
@@ -28,7 +29,7 @@ object newJamDialog: TnewJamDialog
     StyleName = 'Windows'
   end
   object Label2: TLabel
-    Left = 16
+    Left = 8
     Top = 83
     Width = 103
     Height = 15
@@ -36,7 +37,7 @@ object newJamDialog: TnewJamDialog
     StyleName = 'Windows'
   end
   object strName: TEdit
-    Left = 16
+    Left = 8
     Top = 40
     Width = 273
     Height = 23
@@ -44,7 +45,7 @@ object newJamDialog: TnewJamDialog
     StyleName = 'Windows'
   end
   object intHeight: TSpinEdit
-    Left = 16
+    Left = 8
     Top = 104
     Width = 121
     Height = 24
@@ -70,7 +71,7 @@ object newJamDialog: TnewJamDialog
     StyleName = 'Windows'
   end
   object btnCreate: TButton
-    Left = 20
+    Left = 8
     Top = 264
     Width = 75
     Height = 25
@@ -81,7 +82,7 @@ object newJamDialog: TnewJamDialog
     OnClick = btnCreateClick
   end
   object Button2: TButton
-    Left = 216
+    Left = 206
     Top = 264
     Width = 75
     Height = 25
