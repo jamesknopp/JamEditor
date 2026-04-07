@@ -262,8 +262,8 @@ function RectsOverlap(const A, B: TJamRect): Boolean;
 
 function DetectRectsOverlap(const Rects: TArray<TJamRect>): Boolean;
 
-procedure PackRects(var Rects: TArray<TJamRect>; CanvasWidth: Integer;
-  out CanvasHeight: Integer);
+function PackRects(var Rects: TArray<TJamRect>; CanvasWidth: Integer;
+   CanvasHeight: Integer) : integer;
 
 implementation
 
@@ -685,8 +685,8 @@ begin
 
 end;
 
-procedure PackRects(var Rects: TArray<TJamRect>; CanvasWidth: Integer;
-  out CanvasHeight: Integer);
+function PackRects(var Rects: TArray<TJamRect>; CanvasWidth: Integer;
+  CanvasHeight: Integer) : integer;
 var
   Rows: TList<TRow>;
   Gaps: TList<TGap>;
@@ -873,7 +873,7 @@ begin
     // =====================================================
     CanvasHeight := 0;
     for i := 0 to Rows.Count - 1 do
-      CanvasHeight := Max(CanvasHeight, Rows[i].Y + Rows[i].Height);
+      result := Max(CanvasHeight, Rows[i].Y + Rows[i].Height);
 
 
   finally

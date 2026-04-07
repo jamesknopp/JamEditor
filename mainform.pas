@@ -972,7 +972,7 @@ begin
   if boolHWJAM then
   begin
     FHWJamFile.BuildRect_HW(FHWJamFile, JamRects);
-    PackRects(JamRects, 256, FHWJamFile.canvasHeight);
+    FHWJamFile.ChangeJamCanvasHeight(PackRects(JamRects, 256, FHWJamFile.canvasHeight));
 
     for i := 0 to high(JamRects) do
     begin
@@ -988,7 +988,8 @@ begin
   else
   begin
     FJamFile.BuildRect_SW(FJamFile, JamRects);
-    PackRects(JamRects, 256, FJamFile.canvasHeight);
+    FJamFile.ChangeJamCanvasHeight(PackRects(JamRects, 256, FJamFile.canvasHeight));
+
 
     for i := 0 to high(JamRects) do
     begin
@@ -1461,8 +1462,7 @@ begin
     Exit;
 
   if intSelectedTexture = -1 then
-  exit;
-
+    Exit;
 
   i := intSelectedTexture;
   if boolHWJAM then
@@ -1487,7 +1487,6 @@ begin
     intBlurThreshold := Round(numBox_BlurAmount.Value);
     boolSimpifyAllPals := chkBoxSimpPal.Checked;
     boolProtectTrans := chkBoxTrans.Checked;
-
 
     try
       tmpCanvas := TBitmap.Create;
@@ -1940,6 +1939,10 @@ begin
       ConverttoGP3SWJAM.Enabled := true;
       ConverttoGP3HWJAM.Enabled := false;
 
+      panel_JAMCanvas.Visible := true;
+
+      canvasHeight.Value := FHWJamFile.FHeader.JamTotalHeight;
+
       SaveDecryptedJAM.Visible := false;
 
     end
@@ -1978,6 +1981,9 @@ begin
       btnPal3.Enabled := true;
       btnRegenAllPals.Enabled := true;
       btnRemoveAllPals.Enabled := true;
+
+
+      canvasHeight.Value := FJamFile.FHeader.JamTotalHeight;
 
       SaveDecryptedJAM.Visible := true;
 
@@ -2192,7 +2198,7 @@ begin
       newHeight := Max(newHeight, FHWJamFile.FEntries[i].FInfo.Y +
         FHWJamFile.FEntries[i].FInfo.height);
 
-    FHWJamFile.FHeader.JamTotalHeight := newHeight;
+    FHWJamFile.ChangeJamCanvasHeight(newHeight);
 
     RefreshCanvas;
     TreeReDraw;
@@ -2204,7 +2210,7 @@ begin
       newHeight := Max(newHeight, FJamFile.FEntries[i].FInfo.Y +
         FJamFile.FEntries[i].FInfo.height);
 
-    FJamFile.FHeader.JamTotalHeight := newHeight;
+    FJamFile.ChangeJamCanvasHeight(newHeight);
 
     RefreshCanvas;
     TreeReDraw;
@@ -2509,19 +2515,26 @@ end;
 procedure TFormMain.canvasHeightChange(Sender: TObject);
 begin
 
-//  if UpdatingFromCode or userisTyping then
-//    Exit;
+  if UpdatingFromCode or userisTyping then
+    Exit;
 
   boolCanvasChange := true;
-//  updatingFromCode := true;
+  UpdatingFromCode := true;
+
+  if boolUndo then
+    PushUndoState;
+
+  boolUndo := false;
+  undoTimer.Enabled := false;
+  undoTimer.Enabled := true;
 
   if boolHWJAM then
   begin
-
+    FHWJamFile.ChangeJamCanvasHeight(canvasHeight.Value);
   end
   else
   begin
-  FJamFile.ChangeJamCanvasHeight(canvasHeight.Value);
+    FJamFile.ChangeJamCanvasHeight(canvasHeight.Value);
   end;
 
   timer_JamRedrawPals.Enabled := false;
@@ -2533,7 +2546,9 @@ begin
 
   RefreshCanvas;
   JamModified(true);
-//   updatingFromCode := false;
+  UpdatingFromCode := false;
+
+
 end;
 
 procedure TFormMain.canvasPopupMenuPopup(Sender: TObject);
@@ -2958,6 +2973,11 @@ begin
 
     HWRedoStack.Push(FHWJamFile.Clone);
 
+    if HWRedoStack.Count = 0 then
+      Redo1.Enabled := false
+    else
+      Redo1.Enabled := true;
+
     // Free current file
     FHWJamFile.Free;
 
@@ -3207,8 +3227,11 @@ begin
       begin
         jamX := Round(X * intJamZoom);
         jamY := Round(Y * intJamZoom);
-        if jamY mod 2 <> 0 then
-          jamX := jamX + 256;
+
+        if boolrcrJAM then
+        if Y mod 2 <> 0 then
+          jamX := Round((X +255)* intJamZoom);
+
 
         jamW := Round(Width * intJamZoom);
         jamH := Round(height * intJamZoom);
@@ -4428,7 +4451,7 @@ begin
     tex_width.Value := FHWJamFile.FEntries[id].FInfo.Width;
     tex_height.Value := FHWJamFile.FEntries[id].FInfo.height;
 
-    canvasheight.value := FHWJamFile.FHeader.JamTotalHeight;
+    canvasHeight.Value := FHWJamFile.FHeader.JamTotalHeight;
 
     tex_flags.Enabled := true;
     for i := 0 to 15 do
@@ -4473,7 +4496,7 @@ begin
     texScaleX.Value := FJamFile.FEntries[id].FInfo.scaleX;
     texScaleY.Value := FJamFile.FEntries[id].FInfo.scaleY;
 
-    canvasheight.value := FJamFile.FHeader.JamTotalHeight;
+    canvasHeight.Value := FJamFile.FHeader.JamTotalHeight;
 
     for i := 0 to 15 do
       tex_flags.Checked[i] :=

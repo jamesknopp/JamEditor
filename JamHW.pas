@@ -90,9 +90,11 @@ type
 
     procedure ApplyRects_HW(Jam: THWJamFile; const Rects: TArray<TJamRect>);
 
-
+    procedure ChangeJamCanvasHeight(Height: Integer);
 
     property Entries: TList<THWJamEntry> read FEntries write FEntries;
+
+
   end;
 
 implementation
@@ -1109,6 +1111,24 @@ begin
     Jam.FEntries[Rects[i].Index].FInfo.X := Rects[i].X;
     Jam.FEntries[Rects[i].Index].FInfo.Y := Rects[i].Y;
   end;
+end;
+
+procedure THWJamFile.ChangeJamCanvasHeight(Height: Integer);
+var
+  JamBMP: TBitmap;
+  i: Integer;
+begin
+  JamBMP := nil;
+      // Update header + metadata
+    FHeader.JamTotalHeight := Height;
+    canvasHeight := Height;
+
+    CanvasBitmap.Canvas.Brush.Color := TCol_TransGP3HW;
+    CanvasBitmap.Height := height;
+
+
+    intJamMaxHeight := Height;
+
 end;
 
 

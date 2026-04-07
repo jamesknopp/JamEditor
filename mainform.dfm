@@ -2590,7 +2590,6 @@ object FormMain: TFormMain
     Top = 34
     Width = 362
     Height = 660
-    VertScrollBar.Position = 436
     VertScrollBar.Tracking = True
     Align = alRight
     DoubleBuffered = False
@@ -2610,7 +2609,7 @@ object FormMain: TFormMain
     TabOrder = 4
     StyleName = 'Windows'
     object panel_JAMCanvas: TCategoryPanel
-      Top = 748
+      Top = 1184
       Height = 73
       Caption = 'JAM Canvas'
       DoubleBuffered = False
@@ -2660,7 +2659,7 @@ object FormMain: TFormMain
       end
     end
     object panel_RCRControls: TCategoryPanel
-      Top = 656
+      Top = 1092
       Height = 92
       Caption = 'RCR Controls'
       DoubleBuffered = False
@@ -2721,7 +2720,7 @@ object FormMain: TFormMain
       end
     end
     object panel_PalEdit: TCategoryPanel
-      Top = 381
+      Top = 817
       Height = 275
       Caption = 'GP2/GP3 SW Palette Creation'
       DoubleBuffered = False
@@ -2936,7 +2935,7 @@ object FormMain: TFormMain
       end
     end
     object panel_ScaleParameters: TCategoryPanel
-      Top = 149
+      Top = 585
       Height = 232
       Caption = 'Scaling Parameters'
       DoubleBuffered = False
@@ -3046,7 +3045,7 @@ object FormMain: TFormMain
       end
     end
     object panel_TexFlags: TCategoryPanel
-      Top = -19
+      Top = 417
       Height = 168
       Caption = 'Texture Flags'
       DoubleBuffered = False
@@ -3098,7 +3097,7 @@ object FormMain: TFormMain
       end
     end
     object Panel_TexProperties: TCategoryPanel
-      Top = -155
+      Top = 281
       Height = 136
       Caption = 'Texture Properties'
       DoubleBuffered = False
@@ -3226,7 +3225,7 @@ object FormMain: TFormMain
       end
     end
     object panel_TexturePreview: TCategoryPanel
-      Top = -436
+      Top = 0
       Height = 281
       Caption = 'Texture Preview && Palette'
       DoubleBuffered = False
