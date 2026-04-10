@@ -205,6 +205,8 @@ type
     N18: TMenuItem;
     autoPackTexs: TMenuItem;
     undoTimer: TTimer;
+    Button1: TButton;
+    Button2: TButton;
     procedure JamTreeChange(Sender: TObject; Node: TTreeNode);
     procedure PaintBoxPalettePaint(Sender: TObject);
     procedure btnLoadJamClick(Sender: TObject);
@@ -350,6 +352,8 @@ type
     procedure tex_XMouseUp(Sender: TObject; Button: TMouseButton;
       Shift: TShiftState; X, Y: integer);
     procedure canvasHeightChange(Sender: TObject);
+    procedure Button1Click(Sender: TObject);
+    procedure Button2Click(Sender: TObject);
 
   public
     FJamFile: TJamFile;
@@ -972,7 +976,8 @@ begin
   if boolHWJAM then
   begin
     FHWJamFile.BuildRect_HW(FHWJamFile, JamRects);
-    FHWJamFile.ChangeJamCanvasHeight(PackRects(JamRects, 256, FHWJamFile.canvasHeight));
+    FHWJamFile.ChangeJamCanvasHeight(PackRects(JamRects, 256,
+      FHWJamFile.canvasHeight));
 
     for i := 0 to high(JamRects) do
     begin
@@ -988,8 +993,8 @@ begin
   else
   begin
     FJamFile.BuildRect_SW(FJamFile, JamRects);
-    FJamFile.ChangeJamCanvasHeight(PackRects(JamRects, 256, FJamFile.canvasHeight));
-
+    FJamFile.ChangeJamCanvasHeight(PackRects(JamRects, 256,
+      FJamFile.canvasHeight));
 
     for i := 0 to high(JamRects) do
     begin
@@ -1379,8 +1384,8 @@ begin
       else
       begin
         tempBMP := FJamFile.RenderJamCanvas(false);
-        tempBMP.PixelFormat := pf8bit;
-        tempBMP.Palette := creategpxpal;
+        // tempBMP.PixelFormat := pf8bit;
+        // tempBMP.Palette := creategpxpal;
         tempBMP.SaveToFile(exportDialog.filename);
       end;
 
@@ -1548,6 +1553,8 @@ begin
 end;
 
 procedure TFormMain.DrawTexture;
+var
+tmpDims : integer;
 begin
   if (not boolJamLoaded) or (intSelectedTexture < 0) then
     Exit;
@@ -1555,6 +1562,19 @@ begin
   if boolHWJAM then
     ImageEntry.Picture.Bitmap := FHWJamFile.FEntries
       [intSelectedTexture].FTexture
+  else if boolRCRJAM then
+
+  begin
+//  tmpDims := (FJamFile.FEntries[intSelectedTexture].Info.Width)* FJamFile.FEntries[intSelectedTexture].Info.Height;
+//  showMessage(Format('%d v %d', [Length(FJamFile.FEntries[intSelectedTexture].FRawTexture), tmpDims]));
+  imageentry.Picture.bitmap := FJamFile.DrawRawData(FJamFile.FEntries[intSelectedTexture].FRawTexture,FJamFile.FEntries[intSelectedTexture].Info.Width*2,FJamFile.FEntries[intSelectedTexture].Info.Height);
+  imageentry.Picture.bitmap.Width := imageentry.Picture.bitmap.Width;
+  //    if boolRCRDrawMode then
+//      ImageEntry.Picture.Bitmap := FJamFile.FEntries[intSelectedTexture].rcrB
+//    else
+//
+//      ImageEntry.Picture.Bitmap := FJamFile.FEntries[intSelectedTexture].rcrA
+  end
   else
     ImageEntry.Picture.Bitmap := FJamFile.FEntries[intSelectedTexture]
       .FCachedTex[intPaletteID];
@@ -1982,7 +2002,6 @@ begin
       btnRegenAllPals.Enabled := true;
       btnRemoveAllPals.Enabled := true;
 
-
       canvasHeight.Value := FJamFile.FHeader.JamTotalHeight;
 
       SaveDecryptedJAM.Visible := true;
@@ -2009,7 +2028,7 @@ begin
 
     end;
 
-    if boolrcrJAM or boolJipMode then
+    if boolRCRJAM or boolJipMode then
     begin
 
       panel_PaletteEdit.Visible := false;
@@ -2037,7 +2056,7 @@ begin
     end
     else
       panel_RCR.Visible := false;
-    if boolrcrJAM then
+    if boolRCRJAM then
     begin
       panel_RCR.Visible := true;
       panel_RCRControls.Visible := true;
@@ -2174,6 +2193,77 @@ begin
     freeandnil(scaledBMP);
     freeandnil(bmp);
   end;
+end;
+
+procedure TFormMain.Button1Click(Sender: TObject);
+var
+  redBMP, blueBMP: TBitmap;
+  X, Y: integer;
+  RowRed, RowBlue: PByteArray;
+  DstRow: PRGBTripleArray;
+begin
+
+  boolRCRDrawMode := not boolRCRDrawMode;
+
+  if boolRCRDrawMode then
+    ImageEntry.Picture.Bitmap :=
+      IndexedToIndexRGB(FJamFile.FEntries[intSelectedTexture].rcrB)
+  else
+    ImageEntry.Picture.Bitmap :=
+      IndexedToIndexRGB(FJamFile.FEntries[intSelectedTexture].rcrA);
+
+end;
+
+procedure TFormMain.Button2Click(Sender: TObject);
+var
+  i: integer;
+  tmpBMP: TBitmap;
+  tempX, prevY, tempY, newwidth,newheight: integer;
+begin
+
+  // Clone
+  tmpBMP := TBitmap.Create;
+
+  tmpBMP.SetSize(512, FJamFile.FHeader.JamTotalHeight);
+
+  newWidth := Round(tmpBMP.Width * intJamZoom);
+  newHeight := Round(tmpBMP.height * intJamZoom);
+
+  boolRcrJam := true;
+  FJamFile.EncodeCanvas;
+
+  tmpBmp := FJamFile.DrawRawJAM(FJamFile.FRawData);
+
+
+  // Draw on the clone
+  for i := 0 to FJamFile.FEntries.Count - 1 do
+    with FJamFile.FEntries[i].Info do
+    begin
+
+
+      tempX := X;
+      tempY := Y;
+
+      if boolRCRJAM then
+      begin
+        if Y mod 2 <> 0 then
+        begin
+          // prevY := FEntries[i - 1].FInfo.Y;
+          tempY := tempY - 1;
+          tempX := tempX + 256;
+        end;
+
+        tempY := tempY div 2;
+        boolRCRJAM := false;
+        tmpBMP := DrawTextureOutlines(tmpBMP, tempX, tempY, Width * 2, height, i, jamID);
+        boolRCRJAM := true;
+        end;
+    end;
+
+    imageCanvas.Picture.Bitmap := tmpBMP;
+
+    ImageCanvas.height := newHeight;
+    ImageCanvas.Width := newWidth;
 end;
 
 procedure TFormMain.Button4Click(Sender: TObject);
@@ -2469,18 +2559,22 @@ procedure TFormMain.rcrOddClick(Sender: TObject);
 begin
   boolRCRDrawMode := true;
   RefreshCanvas;
+  DrawTexture;
 end;
 
 procedure TFormMain.rcrResetClick(Sender: TObject);
 begin
 
-  RefreshCanvas;
+  ImageEntry.Picture.Bitmap := FJamFile.FEntries[intSelectedTexture].FTexture;
+//    ImageEntry.Picture.Bitmap := FJamFile.DrawRawData(FJamFile.FEntries[intSelectedTexture].FRawTexture,FJamFile.FEntries[intSelectedTexture].Info.width, FJamFile.FEntries[intSelectedTexture].Info.height)
+
 end;
 
 procedure TFormMain.rcrEvenClick(Sender: TObject);
 begin
   boolRCRDrawMode := false;
-  RefreshCanvas
+  RefreshCanvas;
+  DrawTexture;
 end;
 
 procedure TFormMain.btnGenPalClick(Sender: TObject);
@@ -2547,7 +2641,6 @@ begin
   RefreshCanvas;
   JamModified(true);
   UpdatingFromCode := false;
-
 
 end;
 
@@ -3227,17 +3320,16 @@ begin
       begin
         jamX := Round(X * intJamZoom);
         jamY := Round(Y * intJamZoom);
-
-        if boolrcrJAM then
-        if Y mod 2 <> 0 then
-          jamX := Round((X +255)* intJamZoom);
-
-
         jamW := Round(Width * intJamZoom);
         jamH := Round(height * intJamZoom);
-        if boolrcrJAM then
+        if boolRCRJAM then
         begin
-          jamW := jamW * 2;
+          jamX := Round((X div 2) * intJamZoom);
+          if Y mod 2 <> 0 then
+            jamX := Round(((X + 255) div 2) * intJamZoom);
+
+          jamW := Round((Width div 2) * intJamZoom);
+
           jamH := jamH div 2;
           jamY := jamY div 2;
         end;
@@ -3584,18 +3676,17 @@ var
   newWidth, newHeight: integer;
 begin
 
-  if boolrcrJAM = false then
+  if boolRCRJAM = false then
   begin
     JamSanityCheck;
     JamSanityCheckInform(false);
 
   end;
 
-  if boolHWJAM = false then
+  if boolHWJAM then
+    bmp := FHWJamFile.DrawCanvas(true)
+  else
     bmp := FJamFile.DrawFullJam(true);
-
-  if boolHWJAM = true then
-    bmp := FHWJamFile.DrawCanvas(true);
 
   newWidth := Round(bmp.Width * intJamZoom);
   newHeight := Round(bmp.height * intJamZoom);

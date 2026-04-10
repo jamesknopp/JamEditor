@@ -256,7 +256,7 @@ function PackFlag(data: Word; flagNum: Integer): Word;
 
 function ToggleGP3JamsFolder(const APath: string): string;
 
-function DeinterlaceRCR(const Source: TBitmap; ReadOdd: Boolean): TBitmap;
+function DeinterlaceRCR(const Source: TBitmap; ReadOdd: Boolean; JamHeight : integer): TBitmap;
 
 function RectsOverlap(const A, B: TJamRect): Boolean;
 
@@ -266,6 +266,8 @@ function PackRects(var Rects: TArray<TJamRect>; CanvasWidth: Integer;
    CanvasHeight: Integer) : integer;
 
 implementation
+
+uses MainForm;
 
 function DrawTextureOutlines(jamCanvas: TBitmap; X: Integer; Y: Integer;
   Width: Integer; Height: Integer; i: Integer; JamID: Integer): TBitmap;
@@ -280,6 +282,12 @@ var
 begin
   if not booldrawOutlines then
     exit(jamCanvas);
+
+  if boolRCRJAM then
+  begin
+    X := X div 2;
+    Width := Width div 2;
+  end;
 
   drawColour := clInactiveBorder;
   selectColour := clHighlight;
@@ -599,13 +607,14 @@ begin
     Result := APath;
 end;
 
-function DeinterlaceRCR(const Source: TBitmap; ReadOdd: Boolean): TBitmap;
+function DeinterlaceRCR(const Source: TBitmap; ReadOdd: Boolean; JamHeight : integer): TBitmap;
 var
   StartX, NewWidth, Y, SrcX, DstX: Integer;
   srcLine, dstLine: PByteArray;
 begin
   if not Assigned(Source) then
     raise Exception.Create('DeinterlaceRCR: Source bitmap is nil');
+
 
   // Ensure source is 8‑bit
   if Source.PixelFormat <> pf8bit then
@@ -629,7 +638,9 @@ begin
   Result := TBitmap.Create;
   Result.PixelFormat := pf8bit;
   Result.Width := Source.Width;
-  Result.Height := Source.Height;
+  Result.Height := JamHeight;
+
+  //showMessage(inttostr(result.height));
 
   // Copy palette so the byte values map the same colours
   Result.Palette := CopyPalette(Source.Palette);
@@ -644,11 +655,26 @@ begin
     while SrcX < Source.Width do
     begin
       dstLine[DstX] := srcLine[SrcX];
-      dstLine[DstX + 1] := srcLine[SrcX];
-      Inc(DstX, 2);
+//      dstLine[DstX + 1] := srcLine[SrcX];
+      Inc(DstX);
       Inc(SrcX, 2);
     end;
   end;
+
+//  for Y := 0 to Source.Height  - 1 do
+//  begin
+//    srcLine := Source.ScanLine[Y];
+//    dstLine := Result.ScanLine[Y+(jamheight div 2)];
+//    DstX := 0;
+//    SrcX := 1;
+//    while SrcX < Source.Width do
+//    begin
+//      dstLine[DstX] := srcLine[SrcX];
+// //     dstLine[DstX + 1] := srcLine[SrcX];
+//      Inc(DstX);
+//      Inc(SrcX, 2);
+//    end;
+//  end;
 end;
 
 function RectsOverlap(const A, B: TJamRect): Boolean;

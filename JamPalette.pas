@@ -637,7 +637,45 @@ function DrawBitToBmp(const values: array of Byte;
 procedure BleedEdges(var bmp: TBitmap; const matte: TBitmap;
   const TransparentColor: TColor; Iterations: Integer = 4);
 
+
+function IndexedToIndexRGB(const Src: TBitmap): TBitmap;
+
 implementation
+
+function IndexedToIndexRGB(const Src: TBitmap): TBitmap;
+var
+  X, Y: Integer;
+  SrcRow: PByteArray;
+  DstRow: PRGBTripleArray;
+  Idx: Byte;
+begin
+  Result := TBitmap.Create;
+  try
+    if Src.PixelFormat <> pf8bit then
+      raise Exception.Create('Source bitmap must be pf8bit');
+
+    Result.PixelFormat := pf24bit;
+    Result.SetSize(Src.Width, Src.Height);
+
+    for Y := 0 to Src.Height - 1 do
+    begin
+      SrcRow := Src.ScanLine[Y];
+      DstRow := Result.ScanLine[Y];
+
+      for X := 0 to Src.Width - 1 do
+      begin
+        Idx := SrcRow[X];
+
+        DstRow[X].rgbtRed   := Idx;
+        DstRow[X].rgbtGreen := Idx;
+        DstRow[X].rgbtBlue  := Idx;
+      end;
+    end;
+  except
+    Result.Free;
+    raise;
+  end;
+end;
 
 function FindGPxCol(const Palette: array of TRGB; const Color: TRGB): Integer;
 var

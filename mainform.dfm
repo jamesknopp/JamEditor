@@ -2,8 +2,8 @@ object FormMain: TFormMain
   Left = 0
   Top = 0
   Caption = 'Jam Editor'
-  ClientHeight = 720
-  ClientWidth = 1258
+  ClientHeight = 823
+  ClientWidth = 1271
   Color = clBtnFace
   Font.Charset = DEFAULT_CHARSET
   Font.Color = clWindowText
@@ -2127,7 +2127,7 @@ object FormMain: TFormMain
     Left = 300
     Top = 34
     Width = 4
-    Height = 660
+    Height = 763
     StyleName = 'Windows'
     ExplicitTop = 33
     ExplicitHeight = 1045
@@ -2135,8 +2135,8 @@ object FormMain: TFormMain
   object ScrollBox1: TScrollBox
     Left = 304
     Top = 34
-    Width = 592
-    Height = 660
+    Width = 605
+    Height = 763
     HorzScrollBar.Smooth = True
     HorzScrollBar.Tracking = True
     VertScrollBar.Smooth = True
@@ -2150,6 +2150,8 @@ object FormMain: TFormMain
     UseWheelForScrolling = True
     StyleName = 'Windows'
     OnClick = ScrollBox1Click
+    ExplicitWidth = 611
+    ExplicitHeight = 790
     object ImageCanvas: TImage
       Left = 0
       Top = 0
@@ -2164,7 +2166,7 @@ object FormMain: TFormMain
   object ToolBar1: TToolBar
     Left = 0
     Top = 0
-    Width = 1258
+    Width = 1271
     Height = 34
     AutoSize = True
     BorderWidth = 2
@@ -2178,6 +2180,7 @@ object FormMain: TFormMain
     TabOrder = 1
     Transparent = True
     StyleName = 'Windows'
+    ExplicitWidth = 1277
     object toolbar_NEW: TToolButton
       Left = 4
       Top = 0
@@ -2530,8 +2533,8 @@ object FormMain: TFormMain
   object StatusBar1: TStatusBar
     AlignWithMargins = True
     Left = 3
-    Top = 697
-    Width = 1252
+    Top = 800
+    Width = 1265
     Height = 20
     Panels = <
       item
@@ -2548,7 +2551,7 @@ object FormMain: TFormMain
     Left = 0
     Top = 34
     Width = 300
-    Height = 660
+    Height = 763
     Margins.Left = 10
     Margins.Top = 10
     Margins.Right = 10
@@ -2564,11 +2567,12 @@ object FormMain: TFormMain
     Padding.Bottom = 5
     TabOrder = 3
     StyleName = 'Windows'
+    ExplicitHeight = 790
     object JamTree: TTreeView
       Left = 10
       Top = 10
       Width = 280
-      Height = 640
+      Height = 743
       Align = alClient
       BevelEdges = []
       DoubleBuffered = True
@@ -2586,10 +2590,10 @@ object FormMain: TFormMain
     end
   end
   object CategoryPanelGroup1: TCategoryPanelGroup
-    Left = 896
+    Left = 909
     Top = 34
     Width = 362
-    Height = 660
+    Height = 763
     VertScrollBar.Tracking = True
     Align = alRight
     DoubleBuffered = False
@@ -2608,8 +2612,10 @@ object FormMain: TFormMain
     ParentFont = False
     TabOrder = 4
     StyleName = 'Windows'
+    ExplicitLeft = 915
+    ExplicitHeight = 790
     object panel_JAMCanvas: TCategoryPanel
-      Top = 1184
+      Top = 1245
       Height = 73
       Caption = 'JAM Canvas'
       DoubleBuffered = False
@@ -2641,7 +2647,7 @@ object FormMain: TFormMain
           Top = 10
           Width = 69
           Height = 22
-          MaxValue = 768
+          MaxValue = 8192
           MinValue = 32
           TabOrder = 0
           Value = 32
@@ -2658,74 +2664,13 @@ object FormMain: TFormMain
         end
       end
     end
-    object panel_RCRControls: TCategoryPanel
-      Top = 1092
-      Height = 92
-      Caption = 'RCR Controls'
-      DoubleBuffered = False
-      ParentDoubleBuffered = False
-      TabOrder = 1
-      Visible = False
-      StyleName = 'Windows'
-      OnCollapse = panel_RCRControlsCollapse
-      OnExpand = panel_RCRControlsExpand
-      object panel_RCR: TPanel
-        AlignWithMargins = True
-        Left = 3
-        Top = 3
-        Width = 324
-        Height = 67
-        Align = alTop
-        AutoSize = True
-        BevelOuter = bvNone
-        BorderWidth = 10
-        TabOrder = 0
-        Visible = False
-        object Label11: TLabel
-          Left = 16
-          Top = 10
-          Width = 64
-          Height = 13
-          Caption = 'RCR Controls'
-        end
-        object rcrOdd: TButton
-          Left = 16
-          Top = 28
-          Width = 106
-          Height = 29
-          Hint = 'Draw Odd Pixels from the RCR JAM '
-          Caption = 'Draw Odd Pixels'
-          TabOrder = 0
-          OnClick = rcrOddClick
-        end
-        object rcrEven: TButton
-          Left = 128
-          Top = 28
-          Width = 113
-          Height = 29
-          Hint = 'Draw Even Pixels from the RCR JAM '
-          Caption = 'Draw Even Pixels'
-          TabOrder = 1
-          OnClick = rcrEvenClick
-        end
-        object rcrReset: TButton
-          Left = 247
-          Top = 28
-          Width = 90
-          Height = 29
-          Caption = 'Toggle Palette'
-          TabOrder = 2
-          OnClick = rcrResetClick
-        end
-      end
-    end
     object panel_PalEdit: TCategoryPanel
-      Top = 817
+      Top = 970
       Height = 275
       Caption = 'GP2/GP3 SW Palette Creation'
       DoubleBuffered = False
       ParentDoubleBuffered = False
-      TabOrder = 2
+      TabOrder = 1
       StyleName = 'Windows'
       OnCollapse = panel_PalEditCollapse
       OnExpand = panel_PalEditExpand
@@ -2935,12 +2880,12 @@ object FormMain: TFormMain
       end
     end
     object panel_ScaleParameters: TCategoryPanel
-      Top = 585
+      Top = 738
       Height = 232
       Caption = 'Scaling Parameters'
       DoubleBuffered = False
       ParentDoubleBuffered = False
-      TabOrder = 3
+      TabOrder = 2
       Visible = False
       StyleName = 'Windows'
       OnCollapse = panel_ScaleParametersCollapse
@@ -3045,12 +2990,12 @@ object FormMain: TFormMain
       end
     end
     object panel_TexFlags: TCategoryPanel
-      Top = 417
+      Top = 570
       Height = 168
       Caption = 'Texture Flags'
       DoubleBuffered = False
       ParentDoubleBuffered = False
-      TabOrder = 4
+      TabOrder = 3
       Visible = False
       StyleName = 'Windows'
       OnCollapse = panel_TexFlagsCollapse
@@ -3097,12 +3042,12 @@ object FormMain: TFormMain
       end
     end
     object Panel_TexProperties: TCategoryPanel
-      Top = 281
+      Top = 434
       Height = 136
       Caption = 'Texture Properties'
       DoubleBuffered = False
       ParentDoubleBuffered = False
-      TabOrder = 5
+      TabOrder = 4
       Visible = False
       StyleName = 'Windows'
       OnCollapse = Panel_TexPropertiesCollapse
@@ -3225,12 +3170,12 @@ object FormMain: TFormMain
       end
     end
     object panel_TexturePreview: TCategoryPanel
-      Top = 0
+      Top = 153
       Height = 281
       Caption = 'Texture Preview && Palette'
       DoubleBuffered = False
       ParentDoubleBuffered = False
-      TabOrder = 6
+      TabOrder = 5
       Visible = False
       StyleName = 'Windows'
       OnCollapse = panel_TexturePreviewCollapse
@@ -3278,6 +3223,85 @@ object FormMain: TFormMain
             ExplicitHeight = 16
           end
         end
+      end
+    end
+    object panel_RCRControls: TCategoryPanel
+      Top = 0
+      Height = 153
+      Caption = 'RCR Controls'
+      DoubleBuffered = False
+      ParentDoubleBuffered = False
+      TabOrder = 6
+      Visible = False
+      StyleName = 'Windows'
+      OnCollapse = panel_RCRControlsCollapse
+      OnExpand = panel_RCRControlsExpand
+      object panel_RCR: TPanel
+        AlignWithMargins = True
+        Left = 3
+        Top = 3
+        Width = 324
+        Height = 67
+        Align = alTop
+        AutoSize = True
+        BevelOuter = bvNone
+        BorderWidth = 10
+        TabOrder = 0
+        Visible = False
+        object Label11: TLabel
+          Left = 16
+          Top = 10
+          Width = 64
+          Height = 13
+          Caption = 'RCR Controls'
+        end
+        object rcrOdd: TButton
+          Left = 16
+          Top = 28
+          Width = 106
+          Height = 29
+          Hint = 'Draw Odd Pixels from the RCR JAM '
+          Caption = 'Draw Odd Pixels'
+          TabOrder = 0
+          OnClick = rcrOddClick
+        end
+        object rcrEven: TButton
+          Left = 128
+          Top = 28
+          Width = 113
+          Height = 29
+          Hint = 'Draw Even Pixels from the RCR JAM '
+          Caption = 'Draw Even Pixels'
+          TabOrder = 1
+          OnClick = rcrEvenClick
+        end
+        object rcrReset: TButton
+          Left = 247
+          Top = 28
+          Width = 90
+          Height = 29
+          Caption = 'Toggle Palette'
+          TabOrder = 2
+          OnClick = rcrResetClick
+        end
+      end
+      object Button1: TButton
+        Left = 24
+        Top = 76
+        Width = 75
+        Height = 25
+        Caption = 'Greyscale Tex'
+        TabOrder = 1
+        OnClick = Button1Click
+      end
+      object Button2: TButton
+        Left = 113
+        Top = 76
+        Width = 96
+        Height = 25
+        Caption = 'Re Gen RCR'
+        TabOrder = 2
+        OnClick = Button2Click
       end
     end
   end
