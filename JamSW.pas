@@ -108,12 +108,18 @@ type
     procedure ConvertGPxJam(origJam: TJamFile; gp2Pal: boolean);
     procedure ConvertHWJam(hwJam: THWJamFile; gp2Pal: boolean);
 
+    procedure DrawJIPMipmaps();
+
     function GenerateGPxBMP(bitmap: TBitmap; JamId: integer; method: integer;
       simplifyThreshold: integer; BlurThreshold: integer; allPals: boolean;
       protectMatte: boolean): TBitmap;
 
     function DrawSingleTexture(const Raw: TBytes; TotalImageSize: integer;
       JamId: integer; drawFromEntry: boolean): TBitmap;
+
+    function DrawRCRTexture(const Raw: TBytes; TotalImageSize: integer;
+      JamId: integer; drawFromEntry: boolean): TBitmap;
+
     function DrawPalTexture(JamId: integer): TBitmap;
 
     function DrawFullJam(UIUpdate: boolean): TBitmap;
@@ -515,7 +521,6 @@ end;
 procedure TJamFile.SetGpxPal(boolGP2: boolean);
 var
   i: integer;
-  c: TRGB;
 begin
   if boolGP2 then
     for i := 0 to 255 do
@@ -728,21 +733,22 @@ begin
       with FEntries[i] do
       begin
 
-        FTexture := DrawSingleTexture(FRawData, Length(FRawData), i, False);
         if boolRcrJam then
         begin
+          FTexture := DrawRCRTexture(FRawData, Length(FRawData), i, False);
           FOriginalTex := TBitmap.Create;
 
-
-          FOriginalTex.Width := finfo.Width;
-          FOriginalTex.Height := finfo.Height;
+          FOriginalTex.Width := FInfo.Width;
+          FOriginalTex.Height := FInfo.Height;
           FOriginalTex.PixelFormat := pf8bit;
           FOriginalTex.Palette := CreateGPxPal;
-          FOriginalTex.Canvas.Draw(0,0,Ftexture)
+          FOriginalTex.Canvas.Draw(0, 0, FTexture)
         end
         else
+        begin
+          FTexture := DrawSingleTexture(FRawData, Length(FRawData), i, False);
           FOriginalTex := DrawPalTexture(i);
-
+        end;
         if preview = False then
         begin
           if boolRcrJam then
@@ -829,10 +835,7 @@ var
   indices, tempRawCanvas: TBytes;
   X, Y, i, origidx, bestidx: integer;
   bmp: TBitmap;
-  boolCorrectSize: boolean;
 begin
-
-  boolCorrectSize := False;
 
   bmp := TBitmap.Create;
 
@@ -929,7 +932,6 @@ var
   X, origidx: integer;
   bestidx: integer;
   srcStride: integer;
-  tempSize: integer;
 
 begin
 
@@ -967,7 +969,7 @@ begin
     end;
 
     TempRaw := Entry.FRawTexture;
-    tempSize := H * W;
+    // tempSize := H * W;
 
     // showMessage(format('JamID %d size: %d versus %d',[fentries[i].FInfo.JamID,length(tempraw),tempSize]));
     for Y := 0 to H - 1 do
@@ -1049,6 +1051,119 @@ begin
     Length(Entry.FRawTexture), JamId, True);
 end;
 
+function TJamFile.DrawRCRTexture(const Raw: TBytes; TotalImageSize: integer;
+  JamId: integer; drawFromEntry: boolean): TBitmap;
+var
+  W, H, X0, Y0: integer;
+  srcStride: integer;
+  palCount, i, X, Y, idx, dst: integer;
+  LocalPal: array [0 .. 255] of Byte;
+  bmp: TBitmap;
+  dstID: integer;
+  tempY, tempX, prevY: integer;
+  rcrA, rcrB: integer;
+
+  rcrBMP: TBitmap;
+begin
+
+  W := FEntries[JamId].FInfo.Width;
+  H := FEntries[JamId].FInfo.Height;
+
+  srcStride := 512;
+  X0 := FEntries[JamId].FInfo.X;
+
+  if FEntries[JamId].FInfo.Y mod 2 <> 0 then
+    X0 := X0 + 256;
+
+  Y0 := FEntries[JamId].FInfo.Y div 2;
+
+  W := W * 2;
+
+  // Default = identity mapping
+  for i := 0 to 255 do
+    LocalPal[i] := i;
+
+  palCount := FEntries[JamId].FInfo.PaletteSizeDiv4;
+  if palCount > 256 then
+    palCount := 256;
+
+  for i := 0 to palCount - 1 do
+    LocalPal[i] := FEntries[JamId].FPalettes[intPaletteID][i];
+
+  bmp := TBitmap.Create;
+  try
+    bmp.Canvas.lock;
+    bmp.Width := W;
+
+    bmp.Height := H;
+    bmp.PixelFormat := pf8bit;
+    bmp.Palette := CreateGPxPal;
+
+    bmp.PixelFormat := pf24bit;
+    bmp.Width := W div 2;
+    SetLength(FEntries[JamId].FRawTexture, W * H);
+
+    FEntries[JamId].rcrA := TBitmap.Create;
+    FEntries[JamId].rcrB := TBitmap.Create;
+
+    with FEntries[JamId].rcrA do
+    begin
+      Canvas.lock;
+      Width := W div 2;
+      Height := H;
+      PixelFormat := pf8bit;
+      Palette := CreateGPxPal;
+    end;
+
+    with FEntries[JamId].rcrB do
+    begin
+      Canvas.lock;
+      Width := W div 2;
+      Height := H;
+      PixelFormat := pf8bit;
+      Palette := CreateGPxPal;
+    end;
+
+    for Y := 0 to H - 1 do
+      for X := 0 to (W div 2) - 1 do
+      begin
+
+        idx := X0 + (X * 2) + (Y0 + Y) * srcStride;
+
+        dst := LocalPal[Raw[idx]];
+        rcrA := dst;
+
+        // dstID := (Y * W) + X;
+        // FEntries[JamId].FRawTexture[dstID] := Raw[idx];
+
+        FEntries[JamId].rcrA.Canvas.Pixels[X, Y] :=
+          RGB(gpxPal[dst].r, gpxPal[dst].g, gpxPal[dst].b);
+
+        idx := X0 + (X * 2) + 1 + (Y0 + Y) * srcStride;
+
+        dst := LocalPal[Raw[idx]];
+        rcrB := dst;
+
+        FEntries[JamId].rcrB.Canvas.Pixels[X, Y] :=
+          RGB(gpxPal[dst].r, gpxPal[dst].g, gpxPal[dst].b);
+
+        // dstID := (Y * W) + X+1;
+        // FEntries[JamId].FRawTexture[dstID] := Raw[idx];
+
+        bmp.Canvas.Pixels[X, Y] := RGB(rcrA, 0, rcrB);
+      end;
+
+    // showMessage(format('Total image size: %d, Raw Size: %d, texture size: %d', [totalImageSize, length(raw), w*h]));
+    FEntries[JamId].FRawTexture := ExtractRawTexture(Raw, X0, Y0, W, H, 512);
+
+    bmp.Canvas.Unlock;
+
+    Result := bmp;
+  except
+    bmp.free;
+    raise;
+  end;
+end;
 
 // draws a single texture - if this is a first draw when the jam is loaded, drawfromentry should be true.
 // Otherwise utilise the original texture. This utilises the encoded raw data, be it the rawdata on the texture or the full original data set of the JAM
@@ -1069,7 +1184,6 @@ var
 begin
 
   W := FEntries[JamId].FInfo.Width;
-
   H := FEntries[JamId].FInfo.Height;
 
   if drawFromEntry then
@@ -1081,22 +1195,8 @@ begin
   else
   begin
     srcStride := 256;
-
-    if boolRcrJam then
-    begin
-      srcStride := 512;
-      X0 := FEntries[JamId].FInfo.X;
-      if FEntries[JamId].FInfo.Y mod 2 <> 0 then
-        X0 := X0 + 256;
-      Y0 := FEntries[JamId].FInfo.Y div 2;
-      W := W * 2;
-    end
-    else
-    begin
-      X0 := FEntries[JamId].FInfo.X;
-      Y0 := FEntries[JamId].FInfo.Y;
-    end;
-
+    X0 := FEntries[JamId].FInfo.X;
+    Y0 := FEntries[JamId].FInfo.Y;
   end;
 
   // Default = identity mapping
@@ -1112,97 +1212,33 @@ begin
 
   bmp := TBitmap.Create;
   try
-    bmp.canvas.lock;
+    bmp.Canvas.lock;
     bmp.Width := W;
 
     bmp.Height := H;
     bmp.PixelFormat := pf8bit;
     bmp.Palette := CreateGPxPal;
 
-    if boolRcrJam then
-    begin
-      bmp.PixelFormat := pf24bit;
-      bmp.Width := W div 2;
-      SetLength(FEntries[JamId].FRawTexture, W * H);
+    SetLength(FEntries[JamId].FRawTexture, W * H);
 
-      FEntries[JamId].rcrA := TBitmap.Create;
-      FEntries[JamId].rcrB := TBitmap.Create;
-
-      with FEntries[JamId].rcrA do
+    for Y := 0 to H - 1 do
+      for X := 0 to W - 1 do
       begin
-        canvas.lock;
-        Width := W div 2;
-        Height := H;
-        PixelFormat := pf8bit;
-        Palette := CreateGPxPal;
+        idx := X0 + X + (Y0 + Y) * srcStride;
+        if idx >= Length(Raw) then
+          raise Exception.CreateFmt
+            ('DrawSingleTexture: Raw index %d out of bounds (%d)',
+            [idx, Length(Raw)]);
+
+        dstID := (Y * W) + X;
+        FEntries[JamId].FRawTexture[dstID] := Raw[idx];
+
+        dst := LocalPal[Raw[idx]];
+        bmp.Canvas.Pixels[X, Y] := RGB(gpxPal[dst].r, gpxPal[dst].g,
+          gpxPal[dst].b);
       end;
 
-      with FEntries[JamId].rcrB do
-      begin
-        canvas.lock;
-        Width := W div 2;
-        Height := H;
-        PixelFormat := pf8bit;
-        Palette := CreateGPxPal;
-      end;
-
-      for Y := 0 to H - 1 do
-        for X := 0 to (W div 2) - 1 do
-        begin
-
-          idx := X0 + (X * 2) + (Y0 + Y) * srcStride;
-
-          dst := LocalPal[Raw[idx]];
-          rcrA := dst;
-
-          // dstID := (Y * W) + X;
-          // FEntries[JamId].FRawTexture[dstID] := Raw[idx];
-
-          FEntries[JamId].rcrA.canvas.Pixels[X, Y] :=
-            RGB(gpxPal[dst].r, gpxPal[dst].g, gpxPal[dst].b);
-
-          idx := X0 + (X * 2) + 1 + (Y0 + Y) * srcStride;
-
-          dst := LocalPal[Raw[idx]];
-          rcrB := dst;
-
-          FEntries[JamId].rcrB.canvas.Pixels[X, Y] :=
-            RGB(gpxPal[dst].r, gpxPal[dst].g, gpxPal[dst].b);
-
-          // dstID := (Y * W) + X+1;
-          // FEntries[JamId].FRawTexture[dstID] := Raw[idx];
-
-          bmp.canvas.Pixels[X, Y] := RGB(rcrA, 0, rcrB);
-        end;
-
-      // showMessage(format('Total image size: %d, Raw Size: %d, texture size: %d', [totalImageSize, length(raw), w*h]));
-      FEntries[JamId].FRawTexture := ExtractRawTexture(Raw, X0, Y0, W, H, 512);
-
-    end
-    else
-    begin
-
-      SetLength(FEntries[JamId].FRawTexture, W * H);
-
-      for Y := 0 to H - 1 do
-        for X := 0 to W - 1 do
-        begin
-          idx := X0 + X + (Y0 + Y) * srcStride;
-          if idx >= Length(Raw) then
-            raise Exception.CreateFmt
-              ('DrawSingleTexture: Raw index %d out of bounds (%d)',
-              [idx, Length(Raw)]);
-
-          dstID := (Y * W) + X;
-          FEntries[JamId].FRawTexture[dstID] := Raw[idx];
-
-          dst := LocalPal[Raw[idx]];
-          bmp.canvas.Pixels[X, Y] := RGB(gpxPal[dst].r, gpxPal[dst].g,
-            gpxPal[dst].b);
-        end;
-    end;
-
-    bmp.canvas.Unlock;
+    bmp.Canvas.Unlock;
 
     Result := bmp;
   except
@@ -1288,7 +1324,7 @@ begin
 
   jamTex := TBitmap.Create;
   try
-    jamTex.canvas.lock;
+    jamTex.Canvas.lock;
     jamTex.Width := W;
     jamTex.Height := H;
     jamTex.PixelFormat := pf24bit;
@@ -1311,12 +1347,12 @@ begin
             ('DrawPalTexture: Texture index %d out of bounds (%d)',
             [idx, Length(FEntries[JamId].FRawTexture)]);
         dst := LocalPal[FEntries[JamId].FRawTexture[idx]];
-        jamTex.canvas.Pixels[X, Y] := RGB(gpxPal[dst].r, gpxPal[dst].g,
+        jamTex.Canvas.Pixels[X, Y] := RGB(gpxPal[dst].r, gpxPal[dst].g,
           gpxPal[dst].b);
       end;
 
     jamTex.Palette := CreateGPxPal;
-    jamTex.canvas.Unlock;
+    jamTex.Canvas.Unlock;
     Result := jamTex;
   except
     jamTex.free;
@@ -1332,24 +1368,24 @@ var
 begin
   JamBMP := TBitmap.Create;
   try
-    JamBMP.canvas.lock;
+    JamBMP.Canvas.lock;
     JamBMP.PixelFormat := pf8bit;
     JamBMP.Palette := CreateGPxPal;
     JamBMP.SetSize(256, FHeader.JamTotalHeight);
 
-    JamBMP.canvas.Brush.Color := RGB(gpxPal[0].r, gpxPal[0].g, gpxPal[0].b);
-    JamBMP.canvas.FillRect(Rect(0, 0, JamBMP.Width, JamBMP.Height));
+    JamBMP.Canvas.Brush.Color := RGB(gpxPal[0].r, gpxPal[0].g, gpxPal[0].b);
+    JamBMP.Canvas.FillRect(Rect(0, 0, JamBMP.Width, JamBMP.Height));
 
     if boolRcrJam then
     begin
       JamBMP.SetSize(256, FHeader.JamTotalHeight div 2);
       entryBmp := DrawFullRCR(FRawData, boolRCRDrawMode, True);
       try
-        JamBMP.canvas.Draw(0, 0, entryBmp);
+        JamBMP.Canvas.Draw(0, 0, entryBmp);
       finally
         entryBmp.free;
       end;
-      JamBMP.canvas.Unlock;
+      JamBMP.Canvas.Unlock;
       Result := JamBMP;
       exit;
     end
@@ -1360,11 +1396,11 @@ begin
         JamBMP.SetSize(256, FHeader.JamTotalHeight);
 
         intJamMaxHeight := FHeader.JamTotalHeight;
-        JamBMP.canvas.Draw(0, 0, entryBmp);
+        JamBMP.Canvas.Draw(0, 0, entryBmp);
       finally
         entryBmp.free;
       end;
-      JamBMP.canvas.Unlock;
+      JamBMP.Canvas.Unlock;
       Result := JamBMP;
       exit;
     end;
@@ -1374,9 +1410,9 @@ begin
     begin
       tempBMP := DrawSingleTexture(FRawData, Length(FRawData), i, False);
       try
-        JamBMP.canvas.Draw(FEntries[i].Info.X, FEntries[i].Info.Y, tempBMP);
+        JamBMP.Canvas.Draw(FEntries[i].Info.X, FEntries[i].Info.Y, tempBMP);
       finally
-        JamBMP.canvas.Unlock;
+        JamBMP.Canvas.Unlock;
         tempBMP.free;
       end;
     end;
@@ -1388,13 +1424,169 @@ begin
   end;
 end;
 
+procedure TJamFile.DrawJIPMipmaps();
+var
+  tmpJAM, tmpTexture: TBitmap;
+  tmpMipMap: TBitmap;
+  tmpCanvas: TBitmap;
+  mipMapHeight, tempSize, X, posX, newX, newY, Y, Z, i, j, X0, Y0, H, W,
+    srcStride, pos, newJIPHeight, newLength, texWidth, texHeight, newWidth,
+    newHeight: integer;
+  TempRaw: TBytes;
+
+  sizeFactor: integer;
+
+  indices: TBytes;
+  tempRawCanvas: TBytes;
+  origidx: integer;
+  bestidx: integer;
+  Mask: TBoolGrid;
+
+begin
+  mipMapHeight := 0;
+
+  for i := 0 to FEntries.Count - 1 do
+    mipMapHeight := Max(mipMapHeight, FEntries[i].Info.Y + Entries[i]
+      .Info.Height);
+
+  newJIPHeight := (mipMapHeight div 2) + mipMapHeight;
+
+  newLength := 256 * newJIPHeight;
+
+  tmpCanvas := TBitmap.Create();
+  tmpCanvas.Canvas.Brush.Color := RGB(gpxPal[0].r, gpxPal[0].g, gpxPal[0].b);
+  tmpCanvas.Canvas.lock;
+  tmpCanvas.PixelFormat := pf24bit;
+  tmpCanvas.Width := 256;
+  tmpCanvas.Height := mipMapHeight;
+
+  for i := 0 to FEntries.count-1 do
+  tmpCanvas.Canvas.Draw(fentries[i].finfo.X, fentries[i].FInfo.y, fentries[i].FTexture);
+
+  tmpJAM := TBitmap.Create();
+  tmpJAM.Canvas.Brush.Color := RGB(gpxPal[0].r, gpxPal[0].g, gpxPal[0].b);
+  tmpJAM.PixelFormat := pf24bit;
+  tmpJAM.Width := 256;
+  tmpJAM.Height := newJIPHeight;
+  tmpJAM.Canvas.lock;
+
+  tmpMipMap := TBitmap.Create();
+  SetStretchBltMode(tmpMipMap.Handle, HALFTONE);
+  SetBrushOrgEx(tmpMipMap.Handle, 0, 0, nil);
+  tmpMipMap.Canvas.Brush.Color := RGB(gpxPal[0].r, gpxPal[0].g, gpxPal[0].b);
+  tmpMipMap.PixelFormat := pf24bit;
+  tmpJAM.Canvas.lock;
+
+  FHeader.JamTotalHeight := newJIPHeight;
+  canvasHeight := newJIPHeight;
+
+  originalCanvas.Canvas.Brush.Color := RGB(gpxPal[0].r, gpxPal[0].g, gpxPal[0].b);
+  originalCanvas.SetSize(256, newJIPHeight);
+
+  SetLength(FRawData, newLength);
+
+  posX := 0;
+  Z := 0;
+  for j := 0 to 5 do
+  begin
+    sizeFactor := (j + 2) + (j * Z);
+
+    newWidth := 256 div sizeFactor;
+    newHeight := mipMapHeight div sizeFactor;
+
+   tmpJam.canvas.draw(posx,mipMapHeight, stretchf(FastBoxBlur_MT_SIMD(tmpCanvas, 2,2),newWidth,newHeight));
+
+    tmpMipMap.Width := newWidth;
+    tmpMipMap.Height := newHeight;
+
+
+    if j < 3 then
+      for i := 0 to FEntries.Count - 1 do
+      begin
+        tmpTexture := TBitmap.Create;
+        tmpTexture.Canvas.Brush.Color := RGB(gpxPal[0].r, gpxPal[0].g, gpxPal[0].b);
+        tmpTexture.PixelFormat := pf32bit;
+        tmpTexture.SetSize(FEntries[i].FTexture.Width,
+          FEntries[i].FTexture.Height);
+        tmpTexture.Canvas.Draw(0, 0, FEntries[i].FTexture);
+
+       FastBoxBlur_MT_SIMD(tmpTexture, 1 * (j+1), 2 * (j+1));
+
+        texWidth := FEntries[i].Info.Width div sizeFactor;
+        texHeight := FEntries[i].Info.Height div sizeFactor;
+
+        newX := posX + (FEntries[i].Info.X div sizeFactor);
+        newY := mipMapHeight + (FEntries[i].Info.Y div sizeFactor);
+
+        tmpJAM.Canvas.Draw(newX, newY, stretchF(tmpTexture, texWidth,
+          texHeight));
+
+        tmpTexture.free;
+      end;
+
+    Inc(posX, newWidth);
+    Inc(Z);
+
+  end;
+
+  for i := 0 to FEntries.Count - 1 do
+  begin
+
+    H := FEntries[i].Info.Height;
+    X0 := FEntries[i].Info.X;
+    Y0 := FEntries[i].Info.Y;
+    W := FEntries[i].Info.Width;
+    srcStride := 256;
+
+    TempRaw := FEntries[i].FRawTexture;
+    // tempSize := H * W;
+
+    // showMessage(format('JamID %d size: %d versus %d',[fentries[i].FInfo.JamID,length(tempraw),tempSize]));
+    for Y := 0 to H - 1 do
+    begin
+      pos := (Y0 + Y) * srcStride + X0;
+      Move(TempRaw[Y * W], FRawData[pos], W);
+    end;
+  end;
+
+  tmpCanvas.Canvas.Unlock;
+  tmpJAM.Canvas.Unlock;
+
+  originalCanvas := CreateGPxPalBMP(tmpJAM);
+
+  // 1) grab the raw 8-bit indices from the bitmap
+  indices := BitmapToIndices(originalCanvas);
+
+  SetLength(tempRawCanvas, canvasWidth * canvasHeight);
+
+  // 3) Scan each pixel: find nearest GPxPal index, record in TempRaw
+  for Y := 0 to canvasHeight - 1 do
+    for X := 0 to canvasWidth - 1 do
+    begin
+      origidx := indices[Y * canvasWidth + X];
+      bestidx := origidx;
+      tempRawCanvas[Y * canvasWidth + X] := bestidx;
+    end;
+
+  // 7) Write TempRaw into the entry’s FRawTexture and the master FRawData
+
+  FRawData := nil;
+  SetLength(FRawData, canvasWidth * canvasHeight);
+  for Y := 0 to canvasHeight - 1 do
+  begin
+    Move(tempRawCanvas[Y * canvasWidth], FRawData[Y * canvasWidth],
+      canvasWidth);
+  end;
+
+end;
+
 function TJamFile.DrawFullJam(UIUpdate: boolean): TBitmap;
 var
   JamBMP, entryBmp, stretchedBmp: TBitmap;
   i: integer;
 begin
   JamBMP := TBitmap.Create;
-  JamBMP.canvas.lock;
+  JamBMP.Canvas.lock;
   try
 
     /// ////////////////////////////////////////////
@@ -1410,7 +1602,7 @@ begin
     // Does the above needs calling everytime? Do we produce a tmp BMP for this use case all the time?
     /// ///////////////////////////////////////////
 
-    JamBMP.canvas.Draw(0, 0, originalCanvas);
+    JamBMP.Canvas.Draw(0, 0, originalCanvas);
     // Bring in the original clean canvas,
     // before drawing over the top of it, the live textures.
     // Bearing in mind, we've cleaned all canvas data so the textures
@@ -1423,9 +1615,9 @@ begin
 
       entryBmp := DrawFullRCR(FRawData, boolRCRDrawMode, True);
       try
-        JamBMP.canvas.Draw(0, 0, entryBmp);
+        JamBMP.Canvas.Draw(0, 0, entryBmp);
       finally
-        JamBMP.canvas.Unlock;
+        JamBMP.Canvas.Unlock;
         entryBmp.free;
       end;
       Result := JamBMP;
@@ -1447,10 +1639,10 @@ begin
             FEntries[i].Info.Width, FEntries[i].Info.Height,
             RGBFromTRGB(gpxPal[0]));
           try
-            JamBMP.canvas.Draw(FEntries[i].Info.X, FEntries[i].Info.Y,
+            JamBMP.Canvas.Draw(FEntries[i].Info.X, FEntries[i].Info.Y,
               stretchedBmp);
           finally
-            JamBMP.canvas.Unlock;
+            JamBMP.Canvas.Unlock;
             freeAndNil(stretchedBmp);
           end;
         end
@@ -1459,10 +1651,10 @@ begin
           entryBmp := DrawSingleTexture(FEntries[i].FRawTexture,
             Length(FEntries[i].FRawTexture), i, True);
           try
-            JamBMP.canvas.Draw(FEntries[i].Info.X, FEntries[i].Info.Y,
+            JamBMP.Canvas.Draw(FEntries[i].Info.X, FEntries[i].Info.Y,
               entryBmp);
           finally
-            JamBMP.canvas.Unlock;
+            JamBMP.Canvas.Unlock;
             entryBmp.free;
           end;
         end;
@@ -1483,7 +1675,7 @@ var
   CanvasData: TBytes;
   bmp: TBitmap;
 begin
-  Result := nil;
+
   canvasWidth := Width;
 
   canvasHeight := Height;
@@ -1516,7 +1708,7 @@ var
   CanvasData: TBytes;
   bmp: TBitmap;
 begin
-  Result := nil;
+
   canvasWidth := 256;
 
   canvasHeight := FHeader.JamTotalHeight;
@@ -1586,7 +1778,7 @@ function TJamFile.DrawOutlines(JamCanvas: TBitmap): TBitmap;
 var
   i: integer;
   tmpBMP: TBitmap;
-  tempX, prevY, tempY: integer;
+  tempX, tempY: integer;
 begin
   if not boolDrawOutlines then
     exit(JamCanvas);
@@ -1835,7 +2027,7 @@ var
 begin
   srcPic := TPicture.Create;
   tmpCanvas := TBitmap.Create;
-  tmpCanvas.canvas.lock;
+  tmpCanvas.Canvas.lock;
   scaledCanvas := nil;
   textureWidth := FEntries[JamId].Info.Width;
   textureHeight := FEntries[JamId].Info.Height;
@@ -1847,10 +2039,10 @@ begin
 
     scaledCanvas := resizeTransProtection(srcPic.bitmap, textureWidth,
       textureHeight, RGBFromTRGB(gpxPal[0]));
-    tmpCanvas.canvas.StretchDraw(Rect(0, 0, textureWidth, textureHeight),
+    tmpCanvas.Canvas.StretchDraw(Rect(0, 0, textureWidth, textureHeight),
       scaledCanvas);
 
-    tmpCanvas.canvas.Unlock;
+    tmpCanvas.Canvas.Unlock;
 
     if assigned(FEntries[JamId].FTexture) then
       FEntries[JamId].FTexture.free;
@@ -2154,7 +2346,6 @@ end;
 procedure TJamFile.ConvertHWJam(hwJam: THWJamFile; gp2Pal: boolean);
 var
   i, j: integer;
-  newTexture: TJamEntry;
   newinfo: TJamEntryInfo;
 begin
 
@@ -2220,7 +2411,6 @@ end;
 procedure TJamFile.ConvertGPxJam(origJam: TJamFile; gp2Pal: boolean);
 var
   i, j: integer;
-  newTexture: TJamEntry;
   buildPal: boolean;
 begin
 
@@ -2260,8 +2450,7 @@ end;
 
 procedure TJamFile.ResizeJam(originalHeight: integer);
 var
-  i, j: integer;
-  newTexture: TJamEntry;
+  i: integer;
   buildPal: boolean;
   ratio: double;
   tmpCanvas: TBitmap;
@@ -2291,7 +2480,7 @@ begin
 
       try
         tmpCanvas.Assign(FOriginalTex);
-        tmpCanvas := StretchF(tmpCanvas, FInfo.Width, FInfo.Height);
+        tmpCanvas := stretchF(tmpCanvas, FInfo.Width, FInfo.Height);
 
         if buildPal then
           FTexture := GenerateGPxBMP(tmpCanvas, i, intSimplifyMethod,
@@ -2395,12 +2584,12 @@ begin
   try
     if clean then
     begin
-      JamBMP.canvas.lock;
+      JamBMP.Canvas.lock;
       try
-        JamBMP.canvas.Brush.Color := RGB(gpxPal[0].r, gpxPal[0].g, gpxPal[0].b);
-        JamBMP.canvas.FillRect(Rect(0, 0, JamBMP.Width, JamBMP.Height));
+        JamBMP.Canvas.Brush.Color := RGB(gpxPal[0].r, gpxPal[0].g, gpxPal[0].b);
+        JamBMP.Canvas.FillRect(Rect(0, 0, JamBMP.Width, JamBMP.Height));
       finally
-        JamBMP.canvas.Unlock;
+        JamBMP.Canvas.Unlock;
       end;
     end
     else
@@ -2410,18 +2599,18 @@ begin
       JamBMP.Height := FHeader.JamTotalHeight;
       intJamMaxHeight := FHeader.JamTotalHeight;
 
-      JamBMP.canvas.lock;
+      JamBMP.Canvas.lock;
       try
         for i := 0 to FEntries.Count - 1 do
         begin
-          JamBMP.canvas.Brush.Color := RGB(gpxPal[0].r, gpxPal[0].g,
+          JamBMP.Canvas.Brush.Color := RGB(gpxPal[0].r, gpxPal[0].g,
             gpxPal[0].b);
-          JamBMP.canvas.FillRect(Rect(FEntries[i].FInfo.X, FEntries[i].FInfo.Y,
+          JamBMP.Canvas.FillRect(Rect(FEntries[i].FInfo.X, FEntries[i].FInfo.Y,
             FEntries[i].FInfo.X + FEntries[i].FInfo.Width,
             FEntries[i].FInfo.Y + FEntries[i].FInfo.Height));
         end;
       finally
-        JamBMP.canvas.Unlock;
+        JamBMP.Canvas.Unlock;
       end;
     end;
 
@@ -2431,7 +2620,7 @@ begin
     originalCanvas.PixelFormat := JamBMP.PixelFormat;
     originalCanvas.Palette := CreateGPxPal;
 
-    originalCanvas.canvas.Draw(0, 0, JamBMP);
+    originalCanvas.Canvas.Draw(0, 0, JamBMP);
 
   finally
     JamBMP.free;
@@ -2466,27 +2655,27 @@ begin
     JamBMP.Width := 256;
     JamBMP.Height := Height;
 
-    JamBMP.canvas.lock;
+    JamBMP.Canvas.lock;
     try
       // Clear background
-      JamBMP.canvas.Brush.Color := RGB(gpxPal[0].r, gpxPal[0].g, gpxPal[0].b);
-      JamBMP.canvas.FillRect(Rect(0, 0, JamBMP.Width, JamBMP.Height));
+      JamBMP.Canvas.Brush.Color := RGB(gpxPal[0].r, gpxPal[0].g, gpxPal[0].b);
+      JamBMP.Canvas.FillRect(Rect(0, 0, JamBMP.Width, JamBMP.Height));
 
       // Copy old canvas into new (top-aligned)
       if assigned(originalCanvas) then
-        JamBMP.canvas.Draw(0, 0, originalCanvas);
+        JamBMP.Canvas.Draw(0, 0, originalCanvas);
     finally
-      JamBMP.canvas.Unlock;
+      JamBMP.Canvas.Unlock;
     end;
 
     // Resize original AFTER copy
     originalCanvas.SetSize(256, Height);
 
-    originalCanvas.canvas.lock;
+    originalCanvas.Canvas.lock;
     try
-      originalCanvas.canvas.Draw(0, 0, JamBMP);
+      originalCanvas.Canvas.Draw(0, 0, JamBMP);
     finally
-      originalCanvas.canvas.Unlock;
+      originalCanvas.Canvas.Unlock;
     end;
 
     intJamMaxHeight := Height;

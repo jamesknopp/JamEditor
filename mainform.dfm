@@ -2150,8 +2150,6 @@ object FormMain: TFormMain
     UseWheelForScrolling = True
     StyleName = 'Windows'
     OnClick = ScrollBox1Click
-    ExplicitWidth = 611
-    ExplicitHeight = 790
     object ImageCanvas: TImage
       Left = 0
       Top = 0
@@ -2161,6 +2159,15 @@ object FormMain: TFormMain
       Proportional = True
       OnMouseDown = ImageCanvasMouseDown
       OnMouseUp = ImageCanvasMouseUp
+    end
+    object Button3: TButton
+      Left = 408
+      Top = 88
+      Width = 75
+      Height = 25
+      Caption = 'Button3'
+      TabOrder = 0
+      OnClick = Button3Click
     end
   end
   object ToolBar1: TToolBar
@@ -2180,7 +2187,6 @@ object FormMain: TFormMain
     TabOrder = 1
     Transparent = True
     StyleName = 'Windows'
-    ExplicitWidth = 1277
     object toolbar_NEW: TToolButton
       Left = 4
       Top = 0
@@ -2567,7 +2573,6 @@ object FormMain: TFormMain
     Padding.Bottom = 5
     TabOrder = 3
     StyleName = 'Windows'
-    ExplicitHeight = 790
     object JamTree: TTreeView
       Left = 10
       Top = 10
@@ -2612,8 +2617,6 @@ object FormMain: TFormMain
     ParentFont = False
     TabOrder = 4
     StyleName = 'Windows'
-    ExplicitLeft = 915
-    ExplicitHeight = 790
     object panel_JAMCanvas: TCategoryPanel
       Top = 1245
       Height = 73
@@ -3241,7 +3244,7 @@ object FormMain: TFormMain
         Left = 3
         Top = 3
         Width = 324
-        Height = 67
+        Height = 115
         Align = alTop
         AutoSize = True
         BevelOuter = bvNone
@@ -3276,8 +3279,8 @@ object FormMain: TFormMain
           OnClick = rcrEvenClick
         end
         object rcrReset: TButton
-          Left = 247
-          Top = 28
+          Left = 212
+          Top = 76
           Width = 90
           Height = 29
           Caption = 'Toggle Palette'
@@ -34350,8 +34353,8 @@ object FormMain: TFormMain
   object timer_redrawTree: TTimer
     Interval = 250
     OnTimer = timer_redrawTreeTimer
-    Left = 375
-    Top = 769
+    Left = 519
+    Top = 649
   end
   object treeimagecollection: TImageCollection
     Images = <

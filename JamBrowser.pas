@@ -744,7 +744,6 @@ var
   jamType: string;
   Height, Width, numTexs: Integer;
   jamPal: TJamType;
-  i: Integer;
   data: WIN32_FILE_ATTRIBUTE_DATA;
   SystemTime: TSystemTime;
   LocalFileTime: TFileTime;
@@ -1395,7 +1394,6 @@ end;
 
 procedure TJamBrowserFrm.SortJams(i: Integer; order: Boolean);
 var
-  x: Integer;
   PreviousFocusedColumn: TEasyColumn;
   PreviousOrder: TEasySortDirection;
 begin
@@ -1430,7 +1428,7 @@ const Path: UnicodeString): Boolean;
 var
   parts: TStringList;
   i: Integer;
-  segment, cumulative: string;
+  cumulative: string;
   currNode: PVirtualNode;
   nodeData: PShellObjectData;
 begin

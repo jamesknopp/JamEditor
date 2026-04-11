@@ -70,9 +70,7 @@ type
     procedure Button1Click(Sender: TObject);
 
   private
-    FLoadTask: ITask;
-    // FCTS: ICancellationTokenSource;
-    // procedure CancelLoad(const WaitMillis: Integer = 2000);
+
   public
     FileList: TStringList;
     procedure QueueJamItem(const FilePath: string);
@@ -120,9 +118,7 @@ procedure TfrmJamAnalysis.Button2Click(Sender: TObject);
 var
   dlg: TFileOpenDialog;
   pickedDir: string;
-  missing: TArray<string>;
-  i: Integer;
-  missingString: string;
+
 begin
   dlg := TFileOpenDialog.Create(nil);
   try
@@ -257,10 +253,8 @@ var
   Thumb: TBitmap;
   Node: TJamItem;
   JamType: string;
-  Height, Width, numTexs: Integer;
   jamPal: TJamType;
   Item: TEasyItem;
-  FileName: string;
 
 begin
   Thumb := nil;
@@ -439,9 +433,7 @@ end;
 procedure TfrmJamAnalysis.LoadImagesWorker(const Folder: string;
 subfolders: Boolean);
 var
-  SR: TSearchRec;
   NewList, CopiedList: TStringList;
-  FileExt: string;
   i: Integer;
   files: TArray<string>;
   f: string;

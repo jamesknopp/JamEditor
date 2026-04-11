@@ -24,7 +24,7 @@ type
   THWJamEntry = class
   public
     FInfo: THWJamEntryInfo;
-  //  FRawInfo: THWRawJamEntryInfo;
+    // FRawInfo: THWRawJamEntryInfo;
     FTexture: TBitmap;
     FOriginalTex: TBitmap;
     boolImportedBMP: boolean;
@@ -90,10 +90,9 @@ type
 
     procedure ApplyRects_HW(Jam: THWJamFile; const Rects: TArray<TJamRect>);
 
-    procedure ChangeJamCanvasHeight(Height: Integer);
+    procedure ChangeJamCanvasHeight(height: integer);
 
     property Entries: TList<THWJamEntry> read FEntries write FEntries;
-
 
   end;
 
@@ -167,8 +166,6 @@ begin
 end;
 
 procedure THWJamEntry.SaveToStream(Stream: TStream);
-var
-  i, L: integer;
 begin
   // Save FInfo
   Stream.WriteBuffer(FInfo, SizeOf(FInfo));
@@ -187,8 +184,7 @@ begin
 end;
 
 procedure THWJamEntry.LoadFromStream(Stream: TStream);
-var
-  i, L: integer;
+
 begin
   // Read FInfo
   Stream.ReadBuffer(FInfo, SizeOf(FInfo));
@@ -380,18 +376,14 @@ var
   ctrl: Byte;
   w: Word;
   raw: TArray<Word>;
-  rawSrc: PWord;
   Info: THWJamEntryInfo;
-  BlockCount, TrueSize: integer;
   sFilename: string;
   ScanPtr: PRGBTriple;
   c: Word;
 
   RawBytes, BufBytes: TBytes;
-  Ptr, palCount: integer;
- // HWInfo: THWRawJamEntryInfo;
+
 begin
-  Result := false;
 
   intjamMaxWidth := 256;
 
@@ -520,8 +512,8 @@ begin
     // Load + decrypt
     RawBytes := TFile.ReadAllBytes(FileName);
     BufBytes := RawBytes;
-    Ptr := 0;
-    Inc(Ptr, SizeOf(JAM_HW_MAGIC));
+    // Ptr := 0;
+    // Inc(Ptr, SizeOf(JAM_HW_MAGIC));
 
     // Header
     // Move(BufBytes[Ptr], FHeader, SizeOf(FHeader));
@@ -592,7 +584,7 @@ begin
   intjamMaxWidth := 256;
 
   sFilename := lowercase(ChangeFileExt(ExtractFileName(FileName), ''));
-  JamFullPath := filename;
+  JamFullPath := FileName;
 
   FHeader.NumItems := 0;
 
@@ -726,10 +718,8 @@ procedure THWJamFile.ImportCanvas(FileName: string);
 var
   i: integer;
   bmp: TBitmap;
-  boolCorrectSize: boolean;
-begin
 
-  boolCorrectSize := false;
+begin
 
   bmp := TBitmap.Create;
 
@@ -790,8 +780,6 @@ end;
 
 procedure THWJamFile.ExportTexture(JamId: integer; textureFilename: string);
 var
-  srcPic: TPicture;
-  textureWidth, textureHeight: integer;
   tmpCanvas: TBitmap;
 begin
 
@@ -921,12 +909,11 @@ var
   Info: THWJamEntryInfo;
   newTex: THWJamEntry;
   x: integer;
-  scaledCanvas: TBitmap;
+
   transbool: boolean;
 begin
   srcPic := TPicture.Create;
 
-  scaledCanvas := nil;
   try
     srcPic.LoadFromFile(textureFilename);
     Info.x := 0;
@@ -979,7 +966,7 @@ function THWJamFile.AddTexture(bmp: TBitmap; newinfo: TJamEntryInfo): integer;
 var
   Info: THWJamEntryInfo;
   newTex: THWJamEntry;
-  x, y: integer;
+  x: integer;
   tmpCanvas, scaledCanvas: TBitmap;
   transbool: boolean;
 begin
@@ -1085,51 +1072,46 @@ begin
 end;
 
 procedure THWJamFile.BuildRect_HW(Jam: THWJamFile; var Rects: TArray<TJamRect>);
-  var
-    i: integer;
-  begin
-    SetLength(Rects, Jam.FHeader.NumItems);
-
-    for i := 0 to Jam.FHeader.NumItems - 1 do
-    begin
-      Rects[i].X := Jam.FEntries[i].FInfo.X;
-      Rects[i].Y := Jam.FEntries[i].FInfo.Y;
-      Rects[i].Width := Jam.FEntries[i].FInfo.Width;
-      Rects[i].Height := Jam.FEntries[i].FInfo.Height;
-      rects[i].jamid := Jam.FEntries[i].FInfo.JamID;
-      Rects[i].size := rects[i].x * rects[i].y;
-      rects[i].index := i;
-    end;
-  end;
-
-procedure THWJamFile.ApplyRects_HW(Jam: THWJamFile; const Rects: TArray<TJamRect>);
 var
-  i: Integer;
+  i: integer;
+begin
+  SetLength(Rects, Jam.FHeader.NumItems);
+
+  for i := 0 to Jam.FHeader.NumItems - 1 do
+  begin
+    Rects[i].x := Jam.FEntries[i].FInfo.x;
+    Rects[i].y := Jam.FEntries[i].FInfo.y;
+    Rects[i].width := Jam.FEntries[i].FInfo.width;
+    Rects[i].height := Jam.FEntries[i].FInfo.height;
+    Rects[i].JamId := Jam.FEntries[i].FInfo.JamId;
+    Rects[i].size := Rects[i].x * Rects[i].y;
+    Rects[i].index := i;
+  end;
+end;
+
+procedure THWJamFile.ApplyRects_HW(Jam: THWJamFile;
+  const Rects: TArray<TJamRect>);
+var
+  i: integer;
 begin
   for i := 0 to High(Rects) do
   begin
-    Jam.FEntries[Rects[i].Index].FInfo.X := Rects[i].X;
-    Jam.FEntries[Rects[i].Index].FInfo.Y := Rects[i].Y;
+    Jam.FEntries[Rects[i].index].FInfo.x := Rects[i].x;
+    Jam.FEntries[Rects[i].index].FInfo.y := Rects[i].y;
   end;
 end;
 
-procedure THWJamFile.ChangeJamCanvasHeight(Height: Integer);
-var
-  JamBMP: TBitmap;
-  i: Integer;
+procedure THWJamFile.ChangeJamCanvasHeight(height: integer);
 begin
-  JamBMP := nil;
-      // Update header + metadata
-    FHeader.JamTotalHeight := Height;
-    canvasHeight := Height;
+  // Update header + metadata
+  FHeader.JamTotalHeight := height;
+  canvasHeight := height;
 
-    CanvasBitmap.Canvas.Brush.Color := TCol_TransGP3HW;
-    CanvasBitmap.Height := height;
+  CanvasBitmap.Canvas.Brush.Color := TCol_TransGP3HW;
+  CanvasBitmap.height := height;
 
-
-    intJamMaxHeight := Height;
+  intJamMaxHeight := height;
 
 end;
-
 
 end.

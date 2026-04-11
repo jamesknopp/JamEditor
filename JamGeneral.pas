@@ -26,7 +26,6 @@ const
   dx: array [0 .. 3] of Integer = (1, -1, 0, 0);
   dy: array [0 .. 3] of Integer = (0, 0, 1, -1);
 
-
 type
   TRow = record
     Y: Integer;
@@ -98,8 +97,8 @@ type
     X, Y: Integer;
     Width, Height: Integer;
     index: Integer;
-    JamID: integer;
-    size: integer;
+    JamID: Integer;
+    size: Integer;
   end;
 
   TJamRectIntersects = record
@@ -172,7 +171,7 @@ var
   intJamMaxWidth: Integer;
   intJamMaxHeight: Integer;
 
-  boolAutoLayout : boolean;
+  boolAutoLayout: Boolean;
 
   boolRcrJam: Boolean;
   booljipMode: Boolean;
@@ -187,9 +186,9 @@ var
 
   booljamLoaded: Boolean;
 
-  boolJamIssues : Boolean;
+  boolJamIssues: Boolean;
 
-  boolUndo : Boolean;
+  boolUndo: Boolean;
 
   generatePal: Boolean;
 
@@ -206,7 +205,7 @@ var
   intSimplifyDist: Integer;
   intBlurThreshold: Integer;
 
-  intUntitledCount: integer;
+  intUntitledCount: Integer;
 
   boolSimpifyAllPals: Boolean;
   boolProtectTrans: Boolean;
@@ -256,14 +255,15 @@ function PackFlag(data: Word; flagNum: Integer): Word;
 
 function ToggleGP3JamsFolder(const APath: string): string;
 
-function DeinterlaceRCR(const Source: TBitmap; ReadOdd: Boolean; JamHeight : integer): TBitmap;
+function DeinterlaceRCR(const Source: TBitmap; ReadOdd: Boolean;
+  JamHeight: Integer): TBitmap;
 
 function RectsOverlap(const A, B: TJamRect): Boolean;
 
 function DetectRectsOverlap(const Rects: TArray<TJamRect>): Boolean;
 
 function PackRects(var Rects: TArray<TJamRect>; CanvasWidth: Integer;
-   CanvasHeight: Integer) : integer;
+  CanvasHeight: Integer): Integer;
 
 implementation
 
@@ -277,13 +277,13 @@ var
   rectX, rectY: Integer;
   textRect: TRect;
   w, h, j, k: Integer;
-  drawColour : TColor;
-  selectColour : TColor;
+  drawColour: TColor;
+  selectColour: TColor;
 begin
   if not booldrawOutlines then
     exit(jamCanvas);
 
-  if boolRCRJAM then
+  if boolRcrJam then
   begin
     X := X div 2;
     Width := Width div 2;
@@ -294,12 +294,12 @@ begin
 
   if boolJamIssues then
   begin
-   for k := 0 to IntersectList.Count - 1 do
-   if intersectlist[k].jamID = jamID then
-   begin
-    drawColour := clRed;
-    selectColour := clYellow;
-  end;
+    for k := 0 to IntersectList.Count - 1 do
+      if IntersectList[k].JamID = JamID then
+      begin
+        drawColour := clRed;
+        selectColour := clYellow;
+      end;
   end;
 
   jamCanvas.Canvas.lock;
@@ -313,7 +313,6 @@ begin
   Y := round(Y * intJamZoom);
   X := round(X * intJamZoom);
 
-
   jamCanvas.Canvas.Pen.Color := drawColour;
   // Set pen color for outlines
   for j in SelectedTextureList do
@@ -325,7 +324,7 @@ begin
   jamCanvas.Canvas.Rectangle(X, Y, X + w, Y + h);
 
   jamCanvas.Canvas.font.IsScreenFont := True;
-  jamCanvas.Canvas.font.Size := min(12, Max(5, round(5 * intJamZoom)));
+  jamCanvas.Canvas.font.size := min(12, Max(5, round(5 * intJamZoom)));
   jamCanvas.Canvas.font.Quality := fqClearTypeNatural;
   jamCanvas.Canvas.font.name := 'Segoe UI';
 
@@ -464,7 +463,6 @@ var
   pxSrc, pxDst: PRGBTriple;
   c: TColor;
   R, G, B: byte;
-  Found: Boolean;
 begin
   Result := TBitmap.Create;
   Result.PixelFormat := pf24bit;
@@ -560,7 +558,7 @@ begin
   try
     fs := TFileStream.Create(Filename, fmOpenRead or fmShareDenyWrite);
     try
-      if fs.Size >= SizeOf(magic) then
+      if fs.size >= SizeOf(magic) then
       begin
         fs.ReadBuffer(magic, SizeOf(magic));
         Result := (magic = JAM_HW_MAGIC);
@@ -607,14 +605,14 @@ begin
     Result := APath;
 end;
 
-function DeinterlaceRCR(const Source: TBitmap; ReadOdd: Boolean; JamHeight : integer): TBitmap;
+function DeinterlaceRCR(const Source: TBitmap; ReadOdd: Boolean;
+  JamHeight: Integer): TBitmap;
 var
-  StartX, NewWidth, Y, SrcX, DstX: Integer;
+  StartX, Y, SrcX, DstX: Integer;
   srcLine, dstLine: PByteArray;
 begin
   if not Assigned(Source) then
     raise Exception.Create('DeinterlaceRCR: Source bitmap is nil');
-
 
   // Ensure source is 8‑bit
   if Source.PixelFormat <> pf8bit then
@@ -640,7 +638,7 @@ begin
   Result.Width := Source.Width;
   Result.Height := JamHeight;
 
-  //showMessage(inttostr(result.height));
+  // showMessage(inttostr(result.height));
 
   // Copy palette so the byte values map the same colours
   Result.Palette := CopyPalette(Source.Palette);
@@ -655,26 +653,26 @@ begin
     while SrcX < Source.Width do
     begin
       dstLine[DstX] := srcLine[SrcX];
-//      dstLine[DstX + 1] := srcLine[SrcX];
+      // dstLine[DstX + 1] := srcLine[SrcX];
       Inc(DstX);
       Inc(SrcX, 2);
     end;
   end;
 
-//  for Y := 0 to Source.Height  - 1 do
-//  begin
-//    srcLine := Source.ScanLine[Y];
-//    dstLine := Result.ScanLine[Y+(jamheight div 2)];
-//    DstX := 0;
-//    SrcX := 1;
-//    while SrcX < Source.Width do
-//    begin
-//      dstLine[DstX] := srcLine[SrcX];
-// //     dstLine[DstX + 1] := srcLine[SrcX];
-//      Inc(DstX);
-//      Inc(SrcX, 2);
-//    end;
-//  end;
+  // for Y := 0 to Source.Height  - 1 do
+  // begin
+  // srcLine := Source.ScanLine[Y];
+  // dstLine := Result.ScanLine[Y+(jamheight div 2)];
+  // DstX := 0;
+  // SrcX := 1;
+  // while SrcX < Source.Width do
+  // begin
+  // dstLine[DstX] := srcLine[SrcX];
+  // //     dstLine[DstX + 1] := srcLine[SrcX];
+  // Inc(DstX);
+  // Inc(SrcX, 2);
+  // end;
+  // end;
 end;
 
 function RectsOverlap(const A, B: TJamRect): Boolean;
@@ -685,8 +683,8 @@ end;
 
 function DetectRectsOverlap(const Rects: TArray<TJamRect>): Boolean;
 var
-  i, j, X, count: Integer;
-  errorMessage: string;
+  i, j: Integer;
+
   intersectItem: TJamRectIntersects;
 
 begin
@@ -703,16 +701,15 @@ begin
       if RectsOverlap(Rects[i], Rects[j]) then
       begin
         Result := True;
-        intersectItem.JamID := Rects[i].jamid;
-        intersectItem.intersectID := Rects[j].jamid;
+        intersectItem.JamID := Rects[i].JamID;
+        intersectItem.intersectID := Rects[j].JamID;
         IntersectList.add(intersectItem);
       end;
-
 
 end;
 
 function PackRects(var Rects: TArray<TJamRect>; CanvasWidth: Integer;
-  CanvasHeight: Integer) : integer;
+  CanvasHeight: Integer): Integer;
 var
   Rows: TList<TRow>;
   Gaps: TList<TGap>;
@@ -730,7 +727,7 @@ begin
     function(const A, B: TJamRect): Integer
     begin
       if B.Height <> A.Height then
-        Exit(B.Height - A.Height);
+        exit(B.Height - A.Height);
       Result := B.Width - A.Width;
     end));
 
@@ -751,13 +748,11 @@ begin
       begin
         Gap := Gaps[j];
 
-        if (Rects[i].Width <= Gap.Width) and
-           (Rects[i].Height <= Gap.Height) then
+        if (Rects[i].Width <= Gap.Width) and (Rects[i].Height <= Gap.Height)
+        then
         begin
-          Score := Min(
-            Gap.Width - Rects[i].Width,
-            Gap.Height - Rects[i].Height
-          );
+          Score := min(Gap.Width - Rects[i].Width,
+            Gap.Height - Rects[i].Height);
 
           if Score < BestScore then
           begin
@@ -781,7 +776,7 @@ begin
           NewGap.Y := Gap.Y;
           NewGap.Width := Gap.Width - Rects[i].Width;
           NewGap.Height := Rects[i].Height;
-          Gaps.Add(NewGap);
+          Gaps.add(NewGap);
         end;
 
         // Split gap (bottom)
@@ -791,7 +786,7 @@ begin
           NewGap.Y := Gap.Y + Rects[i].Height;
           NewGap.Width := Gap.Width;
           NewGap.Height := Gap.Height - Rects[i].Height;
-          Gaps.Add(NewGap);
+          Gaps.add(NewGap);
         end;
 
         Gaps.Delete(BestGap);
@@ -809,7 +804,7 @@ begin
         Row := Rows[j];
 
         if (Rects[i].Height <= Row.Height) and
-           (Row.UsedWidth + Rects[i].Width <= CanvasWidth) then
+          (Row.UsedWidth + Rects[i].Width <= CanvasWidth) then
         begin
           Score := Row.Height - Rects[i].Height;
 
@@ -835,7 +830,7 @@ begin
           NewGap.Y := Row.Y + Rects[i].Height;
           NewGap.Width := Rects[i].Width;
           NewGap.Height := Row.Height - Rects[i].Height;
-          Gaps.Add(NewGap);
+          Gaps.add(NewGap);
         end;
 
         Row.UsedWidth := Row.UsedWidth + Rects[i].Width;
@@ -852,8 +847,8 @@ begin
         Row := Rows[j];
         RemainingWidth := CanvasWidth - Row.UsedWidth;
 
-        if (Rects[i].Width <= RemainingWidth) and
-           (Rects[i].Height <= Row.Height) then
+        if (Rects[i].Width <= RemainingWidth) and (Rects[i].Height <= Row.Height)
+        then
         begin
           Rects[i].X := Row.UsedWidth;
           Rects[i].Y := Row.Y;
@@ -864,7 +859,7 @@ begin
             NewGap.Y := Row.Y + Rects[i].Height;
             NewGap.Width := Rects[i].Width;
             NewGap.Height := Row.Height - Rects[i].Height;
-            Gaps.Add(NewGap);
+            Gaps.add(NewGap);
           end;
 
           Row.UsedWidth := Row.UsedWidth + Rects[i].Width;
@@ -891,7 +886,7 @@ begin
       Rects[i].X := 0;
       Rects[i].Y := Row.Y;
 
-      Rows.Add(Row);
+      Rows.add(Row);
     end;
 
     // =====================================================
@@ -899,8 +894,7 @@ begin
     // =====================================================
     CanvasHeight := 0;
     for i := 0 to Rows.Count - 1 do
-      result := Max(CanvasHeight, Rows[i].Y + Rows[i].Height);
-
+      Result := Max(CanvasHeight, Rows[i].Y + Rows[i].Height);
 
   finally
     Rows.Free;

@@ -88,8 +88,6 @@ var
   dlg: TFileOpenDialog;
   pickedDir: string;
   missing: TArray<string>;
-  i: integer;
-  missingString: string;
 begin
   dlg := TFileOpenDialog.Create(nil);
   try
@@ -127,8 +125,6 @@ var
   dlg: TFileOpenDialog;
   pickedDir: string;
   missing: TArray<string>;
-  i: integer;
-  missingString: string;
 begin
   dlg := TFileOpenDialog.Create(nil);
   try
@@ -173,7 +169,7 @@ end;
 
 procedure ToptionsForm.chkAutoArrangeClick(Sender: TObject);
 begin
-boolAutoLayout := chkAutoArrange.checked;
+  boolAutoLayout := chkAutoArrange.checked;
 end;
 
 procedure ToptionsForm.FormShow(Sender: TObject);
@@ -182,7 +178,7 @@ begin
   edtGp3Loc.text := strGP3Location;
   edtGp32KLoc.text := strGP32kLocation;
 
-  chkAutoArrange.Checked := boolAutoLayout;
+  chkAutoArrange.checked := boolAutoLayout;
 
 end;
 

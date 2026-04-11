@@ -4,7 +4,8 @@ interface
 
 uses System.SysUtils, System.Generics.Collections,
   Generics.Defaults, Winapi.Windows, Vcl.Graphics, System.Math,
-  GeneralHelpers, JamGeneral, vcl.dialogs;
+  GeneralHelpers, JamGeneral, Vcl.dialogs,  System.Threading, System.Classes, System.SyncObjs;
+
 
 type
   TLab = record
@@ -577,6 +578,20 @@ var
 
   HPalettePerLevel: array [0 .. 3] of HPalette;
 
+type
+  TThreadExceptionList = class
+  private
+    FList: TList<string>;
+    FLock: TCriticalSection;
+  public
+    constructor Create;
+    destructor Destroy; override;
+    procedure Add(const Msg: string);
+    function HasErrors: Boolean;
+    function GetAll: string;
+  end;
+
+
 function CreateGPxPal: HPalette;
 
 function CreateLocalPalette(localPal: array of TRGB): HPalette;
@@ -637,10 +652,64 @@ function DrawBitToBmp(const values: array of Byte;
 procedure BleedEdges(var bmp: TBitmap; const matte: TBitmap;
   const TransparentColor: TColor; Iterations: Integer = 4);
 
-
 function IndexedToIndexRGB(const Src: TBitmap): TBitmap;
 
+procedure BuildBlurKernel(Radius: Integer; out Kernel: TArray<Single>);
+
+procedure BlurH(const Src, Dst: TBitmap; const Kernel: TArray<Single>; Radius: Integer);
+procedure BlurV(const Src, Dst: TBitmap; const Kernel: TArray<Single>; Radius: Integer);
+
+function FastGaussianBlur(Bitmap: TBitmap; RadiusX, RadiusY: Integer) : TBitmap;
+
+procedure BoxBlurH(const Src, Dst: TBitmap; Radius: Integer);
+procedure BoxBlurV(const Src, Dst: TBitmap; Radius: Integer);
+
+function FastBoxBlur(Bitmap: TBitmap; RadiusX, RadiusY: Integer) : TBitmap;
+
+procedure BoxBlurV_MT_SIMD(const Src, Dst: TBitmap; Radius: Integer);
+procedure BoxBlurH_MT_SIMD(const Src, Dst: TBitmap; Radius: Integer);
+
+function FastBoxBlur_MT_SIMD(Bitmap: TBitmap; RadiusX, RadiusY: Integer) : TBitmap;
+
 implementation
+
+constructor TThreadExceptionList.Create;
+begin
+  FList := TList<string>.Create;
+  FLock := TCriticalSection.Create;
+end;
+
+destructor TThreadExceptionList.Destroy;
+begin
+  FList.Free;
+  FLock.Free;
+  inherited;
+end;
+
+procedure TThreadExceptionList.Add(const Msg: string);
+begin
+  FLock.Acquire;
+  try
+    FList.Add(Msg);
+  finally
+    FLock.Release;
+  end;
+end;
+
+function TThreadExceptionList.HasErrors: Boolean;
+begin
+  Result := FList.Count > 0;
+end;
+
+function TThreadExceptionList.GetAll: string;
+begin
+  FLock.Acquire;
+  try
+    Result := string.Join(sLineBreak, FList.ToArray);
+  finally
+    FLock.Release;
+  end;
+end;
 
 function IndexedToIndexRGB(const Src: TBitmap): TBitmap;
 var
@@ -655,20 +724,20 @@ begin
       raise Exception.Create('Source bitmap must be pf8bit');
 
     Result.PixelFormat := pf24bit;
-    Result.SetSize(Src.Width, Src.Height);
+    Result.SetSize(Src.width, Src.height);
 
-    for Y := 0 to Src.Height - 1 do
+    for Y := 0 to Src.height - 1 do
     begin
       SrcRow := Src.ScanLine[Y];
       DstRow := Result.ScanLine[Y];
 
-      for X := 0 to Src.Width - 1 do
+      for X := 0 to Src.width - 1 do
       begin
         Idx := SrcRow[X];
 
-        DstRow[X].rgbtRed   := Idx;
+        DstRow[X].rgbtRed := Idx;
         DstRow[X].rgbtGreen := Idx;
-        DstRow[X].rgbtBlue  := Idx;
+        DstRow[X].rgbtBlue := Idx;
       end;
     end;
   except
@@ -810,13 +879,11 @@ end;
 
 function NearestPaletteEntryRGB(C: TRGB): TColor;
 var
-  bestIdx: Integer;
   bestDist, d: Cardinal;
   dr, dg, db: Integer;
   i: Integer;
 begin
   bestDist := High(Cardinal);
-  bestIdx := 0;
 
   for i := 0 to 255 do
   begin
@@ -861,7 +928,7 @@ end;
 // ------------------------------------------------------------------------------
 procedure IndexedTo24bit(const SrcIndexed: TBitmap; out Out24: TBitmap);
 var
-  x, Y: Integer;
+  X, Y: Integer;
   RowSrc: PByteArray;
   RowDst: PRGBTripleArray;
   PalEntries: array [0 .. 255] of TPaletteEntry;
@@ -882,11 +949,11 @@ begin
   begin
     RowSrc := SrcIndexed.ScanLine[Y];
     RowDst := Out24.ScanLine[Y];
-    for x := 0 to SrcIndexed.width - 1 do
+    for X := 0 to SrcIndexed.width - 1 do
     begin
-      RowDst^[x].rgbtRed := PalEntries[RowSrc^[x]].peRed;
-      RowDst^[x].rgbtGreen := PalEntries[RowSrc^[x]].peGreen;
-      RowDst^[x].rgbtBlue := PalEntries[RowSrc^[x]].peBlue;
+      RowDst^[X].rgbtRed := PalEntries[RowSrc^[X]].peRed;
+      RowDst^[X].rgbtGreen := PalEntries[RowSrc^[X]].peGreen;
+      RowDst^[X].rgbtBlue := PalEntries[RowSrc^[X]].peBlue;
     end;
   end;
 end;
@@ -896,7 +963,7 @@ end;
 // ------------------------------------------------------------------------------
 function CreateGPxPalBMP(Src: TBitmap): TBitmap;
 var
-  x, Y, i, bestIndex: Integer;
+  X, Y, i, bestIndex: Integer;
   PalR, PalG, PalB: array [0 .. 255] of Byte;
   Dist, bestDist: Int64;
   RowSrc: PRGBTripleArray;
@@ -906,7 +973,8 @@ var
 begin
   // Prepare destination
   Dst := TBitmap.Create;
-  src.PixelFormat := pf24bit; //force input to be 24bit so scanline processes work correctly
+  Src.PixelFormat := pf24bit;
+  // force input to be 24bit so scanline processes work correctly
   try
     Dst.PixelFormat := pf8bit;
     Dst.width := Src.width;
@@ -926,13 +994,13 @@ begin
     begin
       RowSrc := Src.ScanLine[Y];
       RowDst := Dst.ScanLine[Y];
-      for x := 0 to Src.width - 1 do
+      for X := 0 to Src.width - 1 do
       begin
         bestDist := High(Int64);
         bestIndex := 0;
-        dr := RowSrc^[x].rgbtRed;
-        dg := RowSrc^[x].rgbtGreen;
-        db := RowSrc^[x].rgbtBlue;
+        dr := RowSrc^[X].rgbtRed;
+        dg := RowSrc^[X].rgbtGreen;
+        db := RowSrc^[X].rgbtBlue;
         for i := 0 to 255 do
         begin
           Dist := Int64(dr - PalR[i]) * (dr - PalR[i]) + Int64(dg - PalG[i]) *
@@ -943,7 +1011,7 @@ begin
             bestIndex := i;
           end;
         end;
-        RowDst^[x] := Byte(bestIndex);
+        RowDst^[X] := Byte(bestIndex);
       end;
     end;
 
@@ -956,15 +1024,15 @@ end;
 
 function CreateGPxPalBMP(Src: TBitmap; matte: TBitmap): TBitmap;
 var
-  x, Y, i, bestIndex: Integer;
+  X, Y, i, bestIndex: Integer;
   PalR, PalG, PalB: array [0 .. 255] of Byte;
   Dist, bestDist: Int64;
   RowSrc, matteRow: PRGBTripleArray;
   RowDst: PByteArray;
   dr, dg, db: Integer;
-  mr, mg, mb: Integer;
+
   Dst: TBitmap;
-  matteBMP: TBitmap;
+
 begin
   // Prepare destination
   Dst := TBitmap.Create;
@@ -989,13 +1057,13 @@ begin
       RowSrc := Src.ScanLine[Y];
       RowDst := Dst.ScanLine[Y];
       matteRow := matte.ScanLine[Y];
-      for x := 0 to Src.width - 1 do
+      for X := 0 to Src.width - 1 do
       begin
         bestDist := High(Int64);
         bestIndex := 0;
-        dr := RowSrc^[x].rgbtRed;
-        dg := RowSrc^[x].rgbtGreen;
-        db := RowSrc^[x].rgbtBlue;
+        dr := RowSrc^[X].rgbtRed;
+        dg := RowSrc^[X].rgbtGreen;
+        db := RowSrc^[X].rgbtBlue;
 
         for i := 1 to 253 do
         begin
@@ -1014,12 +1082,12 @@ begin
           end;
         end;
 
-        if matteRow^[x].rgbtRed = 255 then
+        if matteRow^[X].rgbtRed = 255 then
         begin
           bestIndex := 0;
         end;
 
-        RowDst^[x] := Byte(bestIndex);
+        RowDst^[X] := Byte(bestIndex);
       end;
     end;
 
@@ -1050,7 +1118,7 @@ var
   Radius, KernelSize: Integer;
   Kernel: TArray<Double>;
   SumKernel, UsedKernelSum: Double;
-  W, H, x, Y, i, iOff, Y2, V: Integer;
+  W, H, X, Y, i, iOff, Y2, V: Integer;
   RowSrc, RowTmp, RowOut: PRGBTripleArray;
   TempLines: array of PRGBTripleArray;
   dAccR, dAccG, dAccB: Double;
@@ -1091,11 +1159,11 @@ begin
       RowSrc := Src.ScanLine[Y];
       RowTmp := Tmp.ScanLine[Y];
 
-      for x := 0 to W - 1 do
+      for X := 0 to W - 1 do
       begin
-        if Mask[Y][x] then
+        if Mask[Y][X] then
         begin
-          RowTmp^[x] := RowSrc^[x];
+          RowTmp^[X] := RowSrc^[X];
           Continue;
         end;
 
@@ -1106,7 +1174,7 @@ begin
 
         for i := -Radius to Radius do
         begin
-          iOff := x + i;
+          iOff := X + i;
           if iOff < 0 then
             iOff := 0
           else if iOff >= W then
@@ -1124,14 +1192,14 @@ begin
         if UsedKernelSum > 0 then
         begin
           V := Round(dAccR / UsedKernelSum);
-          RowTmp^[x].rgbtRed := EnsureRange(V, 0, 255);
+          RowTmp^[X].rgbtRed := EnsureRange(V, 0, 255);
           V := Round(dAccG / UsedKernelSum);
-          RowTmp^[x].rgbtGreen := EnsureRange(V, 0, 255);
+          RowTmp^[X].rgbtGreen := EnsureRange(V, 0, 255);
           V := Round(dAccB / UsedKernelSum);
-          RowTmp^[x].rgbtBlue := EnsureRange(V, 0, 255);
+          RowTmp^[X].rgbtBlue := EnsureRange(V, 0, 255);
         end
         else
-          RowTmp^[x] := RowSrc^[x];
+          RowTmp^[X] := RowSrc^[X];
       end;
     end;
 
@@ -1148,11 +1216,11 @@ begin
     begin
       RowOut := OutImg.ScanLine[Y];
 
-      for x := 0 to W - 1 do
+      for X := 0 to W - 1 do
       begin
-        if Mask[Y][x] then
+        if Mask[Y][X] then
         begin
-          RowOut^[x] := TempLines[Y]^[x];
+          RowOut^[X] := TempLines[Y]^[X];
           Continue;
         end;
 
@@ -1169,11 +1237,11 @@ begin
           else if Y2 >= H then
             Y2 := H - 1;
 
-          if not Mask[Y2][x] then
+          if not Mask[Y2][X] then
           begin
-            dAccR := dAccR + TempLines[Y2]^[x].rgbtRed * Kernel[i + Radius];
-            dAccG := dAccG + TempLines[Y2]^[x].rgbtGreen * Kernel[i + Radius];
-            dAccB := dAccB + TempLines[Y2]^[x].rgbtBlue * Kernel[i + Radius];
+            dAccR := dAccR + TempLines[Y2]^[X].rgbtRed * Kernel[i + Radius];
+            dAccG := dAccG + TempLines[Y2]^[X].rgbtGreen * Kernel[i + Radius];
+            dAccB := dAccB + TempLines[Y2]^[X].rgbtBlue * Kernel[i + Radius];
             UsedKernelSum := UsedKernelSum + Kernel[i + Radius];
           end;
         end;
@@ -1181,14 +1249,14 @@ begin
         if UsedKernelSum > 0 then
         begin
           V := Round(dAccR / UsedKernelSum);
-          RowOut^[x].rgbtRed := EnsureRange(V, 0, 255);
+          RowOut^[X].rgbtRed := EnsureRange(V, 0, 255);
           V := Round(dAccG / UsedKernelSum);
-          RowOut^[x].rgbtGreen := EnsureRange(V, 0, 255);
+          RowOut^[X].rgbtGreen := EnsureRange(V, 0, 255);
           V := Round(dAccB / UsedKernelSum);
-          RowOut^[x].rgbtBlue := EnsureRange(V, 0, 255);
+          RowOut^[X].rgbtBlue := EnsureRange(V, 0, 255);
         end
         else
-          RowOut^[x] := TempLines[Y]^[x];
+          RowOut^[X] := TempLines[Y]^[X];
       end;
     end;
 
@@ -1202,7 +1270,7 @@ procedure SimplifyByNeighborThreshold(const Src24: TBitmap; Thresh: Double;
 var
   W, H, i: Integer;
   Visited: TBoolGrid;
-  x, Y: Integer;
+  X, Y: Integer;
   SeedColor: TRGBTriple;
   Thresh2: Double;
 
@@ -1220,7 +1288,7 @@ var
   // Helper to push a neighbor if it’s unvisited and “close enough.”
   procedure TryEnqueueNeighbor(const NX, NY: Integer);
   var
-    idx, px, py: Integer;
+    Idx: Integer;
     C: TRGBTriple;
   begin
     if (NX < 0) or (NX >= W) or (NY < 0) or (NY >= H) then
@@ -1232,10 +1300,10 @@ var
     // you could compare to region’s running average if you prefer.
     if ColorDist2(C, SeedColor) <= Thresh2 then
     begin
-      idx := NY * W + NX;
-      Q.Enqueue(idx);
+      Idx := NY * W + NX;
+      Q.Enqueue(Idx);
       Visited[NY][NX] := True;
-      RegionPixels.Add(idx);
+      RegionPixels.Add(Idx);
       Inc(SumR, C.rgbtRed);
       Inc(SumG, C.rgbtGreen);
       Inc(SumB, C.rgbtBlue);
@@ -1259,9 +1327,9 @@ begin
   for Y := 0 to H - 1 do
   begin
     RowSrc := Src24.ScanLine[Y];
-    for x := 0 to W - 1 do
+    for X := 0 to W - 1 do
     begin
-      SrcData[Y][x] := RowSrc^[x];
+      SrcData[Y][X] := RowSrc^[X];
     end;
   end;
 
@@ -1269,8 +1337,8 @@ begin
   SetLength(DstData, H, W);
   SetLength(Visited, H, W);
   for Y := 0 to H - 1 do
-    for x := 0 to W - 1 do
-      Visited[Y][x] := False;
+    for X := 0 to W - 1 do
+      Visited[Y][X] := False;
 
   // 3) Create helper queue and container for collecting region pixels
   Q := TQueue<Integer>.Create;
@@ -1280,16 +1348,16 @@ begin
     // 4) Main loop: visit each pixel once
     for Y := 0 to H - 1 do
     begin
-      for x := 0 to W - 1 do
+      for X := 0 to W - 1 do
       begin
-        if Visited[Y][x] then
+        if Visited[Y][X] then
           Continue;
 
         // Start a new region with seed (X,Y)
-        Visited[Y][x] := True;
+        Visited[Y][X] := True;
         RegionPixels.Clear;
 
-        SeedColor := SrcData[Y][x];
+        SeedColor := SrcData[Y][X];
         SumR := SeedColor.rgbtRed;
         SumG := SeedColor.rgbtGreen;
         SumB := SeedColor.rgbtBlue;
@@ -1297,8 +1365,8 @@ begin
 
         // Enqueue the seed
         Q.Clear;
-        Q.Enqueue(Y * W + x);
-        RegionPixels.Add(Y * W + x);
+        Q.Enqueue(Y * W + X);
+        RegionPixels.Add(Y * W + X);
 
         // 5) Flood‐fill: pull indices from Q, look at 4‐neighbors
         while Q.Count > 0 do
@@ -1343,9 +1411,9 @@ begin
     for Y := 0 to H - 1 do
     begin
       RowDst := Dst24.ScanLine[Y];
-      for x := 0 to W - 1 do
+      for X := 0 to W - 1 do
       begin
-        RowDst^[x] := DstData[Y][x];
+        RowDst^[X] := DstData[Y][X];
       end;
     end;
 
@@ -1372,7 +1440,7 @@ var
   Thresh2: Double;
   SrcData, DstData: TRGBTripleGrid;
   Visited: TBoolGrid;
-  x, Y: Integer;
+  X, Y: Integer;
 
   Q: TQueue<Integer>;
   currIdx, curX, curY: Integer;
@@ -1412,33 +1480,33 @@ begin
   for Y := 0 to H - 1 do
   begin
     RowSrc := Src24.ScanLine[Y];
-    for x := 0 to W - 1 do
-      SrcData[Y][x] := RowSrc^[x];
+    for X := 0 to W - 1 do
+      SrcData[Y][X] := RowSrc^[X];
   end;
 
   // 2) Prepare DstData & Visited grid
   SetLength(DstData, H, W);
   SetLength(Visited, H, W);
   for Y := 0 to H - 1 do
-    for x := 0 to W - 1 do
-      Visited[Y][x] := False;
+    for X := 0 to W - 1 do
+      Visited[Y][X] := False;
 
   // 3) Queue for flood‐fill
   Q := TQueue<Integer>.Create;
   try
     // Loop each pixel
     for Y := 0 to H - 1 do
-      for x := 0 to W - 1 do
+      for X := 0 to W - 1 do
       begin
-        if Visited[Y][x] then
+        if Visited[Y][X] then
           Continue;
 
         // Start new region with seed (X,Y)
-        SeedColor := SrcData[Y][x];
-        Visited[Y][x] := True;
-        DstData[Y][x] := SeedColor; // paint seed in Dst
+        SeedColor := SrcData[Y][X];
+        Visited[Y][X] := True;
+        DstData[Y][X] := SeedColor; // paint seed in Dst
         Q.Clear;
-        Q.Enqueue(Y * W + x);
+        Q.Enqueue(Y * W + X);
 
         // Flood‐fill neighbors
         while Q.Count > 0 do
@@ -1461,8 +1529,8 @@ begin
     for Y := 0 to H - 1 do
     begin
       RowDst := Dst24.ScanLine[Y];
-      for x := 0 to W - 1 do
-        RowDst^[x] := DstData[Y][x];
+      for X := 0 to W - 1 do
+        RowDst^[X] := DstData[Y][X];
     end;
   finally
     Q.Free;
@@ -1486,7 +1554,7 @@ var
   Thresh2: Double;
   SrcData, DstData: TRGBTripleGrid;
   Visited: TBoolGrid;
-  x, Y: Integer;
+  X, Y: Integer;
 
   Q: TQueue<Integer>;
   RegionPixels: TList<Integer>;
@@ -1544,38 +1612,38 @@ begin
   for Y := 0 to H - 1 do
   begin
     RowSrc := Src24.ScanLine[Y];
-    for x := 0 to W - 1 do
-      SrcData[Y][x] := RowSrc^[x];
+    for X := 0 to W - 1 do
+      SrcData[Y][X] := RowSrc^[X];
   end;
 
   // Prepare DstData and visited mask
   SetLength(DstData, H, W);
   SetLength(Visited, H, W);
   for Y := 0 to H - 1 do
-    for x := 0 to W - 1 do
-      Visited[Y][x] := False;
+    for X := 0 to W - 1 do
+      Visited[Y][X] := False;
 
   Q := TQueue<Integer>.Create;
   RegionPixels := TList<Integer>.Create;
   try
     for Y := 0 to H - 1 do
-      for x := 0 to W - 1 do
+      for X := 0 to W - 1 do
       begin
-        if Visited[Y][x] then
+        if Visited[Y][X] then
           Continue;
 
         // Initialize new region
-        Visited[Y][x] := True;
+        Visited[Y][X] := True;
         RegionPixels.Clear;
-        SumR := SrcData[Y][x].rgbtRed;
-        SumG := SrcData[Y][x].rgbtGreen;
-        SumB := SrcData[Y][x].rgbtBlue;
+        SumR := SrcData[Y][X].rgbtRed;
+        SumG := SrcData[Y][X].rgbtGreen;
+        SumB := SrcData[Y][X].rgbtBlue;
         CountPixels := 1;
 
         // Paint the seed’s position later after we know average
         Q.Clear;
-        Q.Enqueue(Y * W + x);
-        RegionPixels.Add(Y * W + x);
+        Q.Enqueue(Y * W + X);
+        RegionPixels.Add(Y * W + X);
 
         // Flood‐fill by dynamic mean
         while Q.Count > 0 do
@@ -1614,8 +1682,8 @@ begin
     for Y := 0 to H - 1 do
     begin
       RowDst := Dst24.ScanLine[Y];
-      for x := 0 to W - 1 do
-        RowDst^[x] := DstData[Y][x];
+      for X := 0 to W - 1 do
+        RowDst^[X] := DstData[Y][X];
     end;
   finally
     Q.Free;
@@ -1636,7 +1704,7 @@ procedure ProcessQuad(const SrcGrid: TRGBTripleGrid;
   var DstGrid: TRGBTripleGrid; X0, Y0, X1, Y1: Integer; Thresh2: Double);
 
 var
-  x, Y: Integer;
+  X, Y: Integer;
   SumR, SumG, SumB, cnt: Int64;
   avgR, avgG, avgB: Integer;
   C: TRGBTriple;
@@ -1675,9 +1743,9 @@ begin
   SumB := 0;
   cnt := 0;
   for Y := Y0 to Y1 do
-    for x := X0 to X1 do
+    for X := X0 to X1 do
     begin
-      C := SrcGrid[Y][x];
+      C := SrcGrid[Y][X];
       if not IsIgnored(C) then
       begin
         Inc(SumR, C.rgbtRed);
@@ -1691,8 +1759,8 @@ begin
   begin
     // All pixels are ignored — copy block unchanged
     for Y := Y0 to Y1 do
-      for x := X0 to X1 do
-        DstGrid[Y][x] := SrcGrid[Y][x];
+      for X := X0 to X1 do
+        DstGrid[Y][X] := SrcGrid[Y][X];
     Exit;
   end;
 
@@ -1704,9 +1772,9 @@ begin
   maxDist2 := 0.0;
   for Y := Y0 to Y1 do
   begin
-    for x := X0 to X1 do
+    for X := X0 to X1 do
     begin
-      C := SrcGrid[Y][x];
+      C := SrcGrid[Y][X];
       if IsIgnored(C) then
         Continue;
       maxDist2 := Max(maxDist2, Sqr(C.rgbtRed - avgR) + Sqr(C.rgbtGreen - avgG)
@@ -1725,12 +1793,12 @@ begin
     C.rgbtGreen := avgG;
     C.rgbtBlue := avgB;
     for Y := Y0 to Y1 do
-      for x := X0 to X1 do
+      for X := X0 to X1 do
       begin
-        if IsIgnored(SrcGrid[Y][x]) then
-          DstGrid[Y][x] := SrcGrid[Y][x]
+        if IsIgnored(SrcGrid[Y][X]) then
+          DstGrid[Y][X] := SrcGrid[Y][X]
         else
-          DstGrid[Y][x] := C;
+          DstGrid[Y][X] := C;
       end;
   end
   else
@@ -1767,7 +1835,7 @@ var
   W, H: Integer;
   Thresh2: Double;
   SrcData, DstData: TRGBTripleGrid;
-  x, Y: Integer;
+  X, Y: Integer;
   RowSrc, RowDst: PRGBTripleArray;
 begin
   Assert(Src24.PixelFormat = pf24bit);
@@ -1780,8 +1848,8 @@ begin
   for Y := 0 to H - 1 do
   begin
     RowSrc := Src24.ScanLine[Y];
-    for x := 0 to W - 1 do
-      SrcData[Y][x] := RowSrc^[x];
+    for X := 0 to W - 1 do
+      SrcData[Y][X] := RowSrc^[X];
   end;
 
   // 2) Prepare the destination 2D array
@@ -1797,15 +1865,15 @@ begin
   for Y := 0 to H - 1 do
   begin
     RowDst := Dst24.ScanLine[Y];
-    for x := 0 to W - 1 do
-      RowDst^[x] := DstData[Y][x];
+    for X := 0 to W - 1 do
+      RowDst^[X] := DstData[Y][X];
   end;
 end;
 
 procedure BuildBmpIdxPal(const LevelsIdx: array of TBitmap;
   out SingleIdx: TBitmap; out PalPerLevel: array of TArray<TColor>);
 var
-  W, H, x, Y, L, i, j: Integer;
+  W, H, X, Y, L, i, j: Integer;
   CountMap: TDictionary<TTupleKey, Integer>;
   TupleToIndices: TDictionary<TTupleKey, TIndex4>;
   PairList: TArray<TPair<TTupleKey, Integer>>;
@@ -1849,10 +1917,10 @@ begin
     begin
       for L := 0 to 3 do
         RowIdx[L] := LevelsIdx[L].ScanLine[Y];
-      for x := 0 to W - 1 do
+      for X := 0 to W - 1 do
       begin
         for L := 0 to 3 do
-          Idx4[L] := RowIdx[L]^[x];
+          Idx4[L] := RowIdx[L]^[X];
         Key := MakeKey(Idx4);
         if not CountMap.TryGetValue(Key, i) then
         begin
@@ -1985,12 +2053,12 @@ begin
         for L := 0 to 3 do
           RowIdx[L] := LevelsIdx[L].ScanLine[Y];
         RowS := SingleIdx.ScanLine[Y];
-        for x := 0 to W - 1 do
+        for X := 0 to W - 1 do
         begin
           for L := 0 to 3 do
-            Idx4[L] := RowIdx[L]^[x];
+            Idx4[L] := RowIdx[L]^[X];
           Key := MakeKey(Idx4);
-          RowS^[x] := TupleToBaseIndex[Key];
+          RowS^[X] := TupleToBaseIndex[Key];
         end;
       end;
 
@@ -2029,7 +2097,7 @@ function BuildSingleIdxMap(const bmp: TBitmap): TBitmap;
 type
   TColorKey = string[3];
 var
-  W, H, x, Y: Integer;
+  W, H, X, Y: Integer;
   Row: PByteArray;
   ColorMap: TDictionary<TColorKey, Byte>;
   KeyList: TList<TColorKey>;
@@ -2093,23 +2161,22 @@ begin
       Row := bmp.ScanLine[Y];
       OutRow := OutBmp.ScanLine[Y];
 
-      for x := 0 to W - 1 do
+      for X := 0 to W - 1 do
       begin
-        PalColor := RGB(PaletteEntries[Row^[x]].peRed,
-          PaletteEntries[Row^[x]].peGreen, PaletteEntries[Row^[x]].peBlue);
+        PalColor := RGB(PaletteEntries[Row^[X]].peRed,
+          PaletteEntries[Row^[X]].peGreen, PaletteEntries[Row^[X]].peBlue);
 
         Key := ColorToKey(PalColor);
 
         if not ColorMap.TryGetValue(Key, ColorIdx) then
         begin
           ColorIdx := ColorMap.Count;
-          if ColorIdx > 255 then
-            raise Exception.Create('More than 256 unique colors found.');
+
           ColorMap.Add(Key, ColorIdx);
           KeyList.Add(Key);
         end;
 
-        OutRow^[x] := ColorIdx;
+        OutRow^[X] := ColorIdx;
       end;
     end;
 
@@ -2123,11 +2190,12 @@ end;
 procedure BuildGPxMatteMask(const Src: TBitmap;
 const TransColors: array of TColor; out Mask: TBoolGrid);
 var
-  W, H, x, Y, i: Integer;
+  W, H, X, Y, i: Integer;
   Row: PRGBTripleArray;
   pix: TRGBTriple;
   rgb2: TColor;
 begin
+ src.pixelformat := pf24bit;
   Assert(Src.PixelFormat = pf24bit, 'Source must be pf24bit');
 
   W := Src.width;
@@ -2137,11 +2205,11 @@ begin
   for Y := 0 to H - 1 do
   begin
     Row := Src.ScanLine[Y]; // each row is an array of TRGBTriple
-    for x := 0 to W - 1 do
+    for X := 0 to W - 1 do
     begin
-      pix := Row^[x];
+      pix := Row^[X];
       rgb2 := RGB(pix.rgbtRed, pix.rgbtGreen, pix.rgbtBlue);
-      Mask[Y][x] := False;
+      Mask[Y][X] := False;
       if boolProtectTrans = False then
         Break;
       // Check against each transparent color
@@ -2149,7 +2217,7 @@ begin
       begin
         if rgb2 = TransColors[i] then
         begin
-          Mask[Y][x] := True;
+          Mask[Y][X] := True;
           Break;
         end;
       end;
@@ -2159,11 +2227,10 @@ end;
 
 procedure BuildMaskFromBMP(const Src: TBitmap; out Mask: TBoolGrid);
 var
-  W, H, x, Y, i: Integer;
+  W, H, X, Y: Integer;
   Row: PRGBTripleArray;
   pix: TRGBTriple;
   rgb2: TColor;
-  TransColors: array of TColor;
 begin
   Assert(Src.PixelFormat = pf24bit, 'Source must be pf24bit');
 
@@ -2174,16 +2241,16 @@ begin
   for Y := 0 to H - 1 do
   begin
     Row := Src.ScanLine[Y]; // each row is an array of TRGBTriple
-    for x := 0 to W - 1 do
+    for X := 0 to W - 1 do
     begin
-      pix := Row^[x];
+      pix := Row^[X];
       rgb2 := RGB(pix.rgbtRed, pix.rgbtGreen, pix.rgbtBlue);
-      Mask[Y][x] := False;
+      Mask[Y][X] := False;
       // Check against each transparent color
 
       if rgb2 = RGB(0, 0, 0) then
       begin
-        Mask[Y][x] := True;
+        Mask[Y][X] := True;
         Break;
       end;
 
@@ -2194,7 +2261,7 @@ end;
 function ApplyMatteToImage(Resized, matte: TBitmap;
 const TransparentColor: TColor): TBitmap;
 var
-  x, Y: Integer;
+  X, Y: Integer;
   ResLine, MatteLine: PRGBTripleArray;
   OutLine: PRGBTripleArray;
   tcR, tcG, tcB: Byte;
@@ -2215,19 +2282,19 @@ begin
     ResLine := Resized.ScanLine[Y];
     MatteLine := matte.ScanLine[Y];
     OutLine := Result.ScanLine[Y];
-    for x := 0 to Resized.width - 1 do
+    for X := 0 to Resized.width - 1 do
     begin
-      if MatteLine^[x].rgbtRed > 127 then
+      if MatteLine^[X].rgbtRed > 127 then
       begin
         // Transparent pixel
-        OutLine^[x].rgbtRed := tcR;
-        OutLine^[x].rgbtGreen := tcG;
-        OutLine^[x].rgbtBlue := tcB;
+        OutLine^[X].rgbtRed := tcR;
+        OutLine^[X].rgbtGreen := tcG;
+        OutLine^[X].rgbtBlue := tcB;
       end
       else
       begin
         // Opaque pixel from resized image
-        OutLine^[x] := ResLine^[x];
+        OutLine^[X] := ResLine^[X];
       end;
     end;
   end;
@@ -2266,7 +2333,7 @@ end;
 function DrawBitToBmp(const values: array of Byte;
 width, height: Integer): TBitmap;
 var
-  x, Y, idx: Integer;
+  X, Y, Idx: Integer;
   bmp: TBitmap;
 begin
   bmp := TBitmap.Create;
@@ -2274,15 +2341,15 @@ begin
   bmp.SetSize(width, height);
   bmp.PixelFormat := pf24bit;
 
-  idx := 0;
+  Idx := 0;
   for Y := 0 to height - 1 do
-    for x := 0 to width - 1 do
+    for X := 0 to width - 1 do
     begin
-      if values[idx] = $01 then
-        bmp.canvas.Pixels[x, Y] := clWhite
+      if values[Idx] = $01 then
+        bmp.canvas.Pixels[X, Y] := clWhite
       else
-        bmp.canvas.Pixels[x, Y] := clBlack;
-      Inc(idx);
+        bmp.canvas.Pixels[X, Y] := clBlack;
+      Inc(Idx);
     end;
 
   bmp.canvas.unlock;
@@ -2292,7 +2359,7 @@ end;
 procedure BleedEdges(var bmp: TBitmap; const matte: TBitmap;
 const TransparentColor: TColor; Iterations: Integer = 4);
 var
-  W, H, x, Y, i, dx, dy: Integer;
+  W, H, X, Y, i, dx, dy: Integer;
   Src, Tmp: TBitmap;
   SrcLine, DstLine, NeighLine: PRGBTripleArray;
   Col, NeighColor: TColor;
@@ -2315,10 +2382,10 @@ begin
         SrcLine := Src.ScanLine[Y];
         DstLine := Tmp.ScanLine[Y];
 
-        for x := 1 to W - 2 do
+        for X := 1 to W - 2 do
         begin
-          Col := RGB(SrcLine[x].rgbtRed, SrcLine[x].rgbtGreen,
-            SrcLine[x].rgbtBlue);
+          Col := RGB(SrcLine[X].rgbtRed, SrcLine[X].rgbtGreen,
+            SrcLine[X].rgbtBlue);
           if Col = TransparentColor then
           begin
             // Look around in 8-neighborhood
@@ -2330,20 +2397,20 @@ begin
                 if (dx = 0) and (dy = 0) then
                   Continue;
 
-                NeighColor := RGB(NeighLine[x + dx].rgbtRed,
-                  NeighLine[x + dx].rgbtGreen, NeighLine[x + dx].rgbtBlue);
+                NeighColor := RGB(NeighLine[X + dx].rgbtRed,
+                  NeighLine[X + dx].rgbtGreen, NeighLine[X + dx].rgbtBlue);
 
                 if NeighColor <> TransparentColor then
                 begin
                   // Extend neighbor color into this transparent pixel
-                  DstLine[x].rgbtRed := GetRValue(NeighColor);
-                  DstLine[x].rgbtGreen := GetGValue(NeighColor);
-                  DstLine[x].rgbtBlue := GetBValue(NeighColor);
+                  DstLine[X].rgbtRed := GetRValue(NeighColor);
+                  DstLine[X].rgbtGreen := GetGValue(NeighColor);
+                  DstLine[X].rgbtBlue := GetBValue(NeighColor);
                   Break;
                 end;
               end;
-              if RGB(DstLine[x].rgbtRed, DstLine[x].rgbtGreen,
-                DstLine[x].rgbtBlue) <> TransparentColor then
+              if RGB(DstLine[X].rgbtRed, DstLine[X].rgbtGreen,
+                DstLine[X].rgbtBlue) <> TransparentColor then
                 Break;
             end;
           end;
@@ -2360,4 +2427,514 @@ begin
   end;
 end;
 
+type
+  PPixel32 = ^TPixel32;
+  TPixel32 = packed record
+    B, G, R, A: Byte;
+  end;
+
+procedure BuildBlurKernel(Radius: Integer; out Kernel: TArray<Single>);
+var
+  i: Integer;
+  Sigma, Sum, x: Single;
+begin
+  if Radius <= 0 then
+  begin
+    SetLength(Kernel, 1);
+    Kernel[0] := 1;
+    Exit;
+  end;
+
+  Sigma := Radius * 0.5;
+  SetLength(Kernel, Radius * 2 + 1);
+
+  Sum := 0;
+  for i := -Radius to Radius do
+  begin
+    x := i;
+    Kernel[i + Radius] := Exp(-(x * x) / (2 * Sigma * Sigma));
+    Sum := Sum + Kernel[i + Radius];
+  end;
+
+  for i := 0 to High(Kernel) do
+    Kernel[i] := Kernel[i] / Sum;
+end;
+
+procedure BlurH(const Src, Dst: TBitmap; const Kernel: TArray<Single>; Radius: Integer);
+var
+  x, y, k, xx: Integer;
+  SrcLine, DstLine: PPixel32;
+  p: PPixel32;
+  r, g, b: Single;
+begin
+  for y := 0 to Src.Height - 1 do
+  begin
+    SrcLine := Src.ScanLine[y];
+    DstLine := Dst.ScanLine[y];
+
+    for x := 0 to Src.Width - 1 do
+    begin
+      r := 0; g := 0; b := 0;
+
+      for k := -Radius to Radius do
+      begin
+        xx := x + k;
+        if xx < 0 then xx := 0 else
+        if xx >= Src.Width then xx := Src.Width - 1;
+
+        p := SrcLine;
+        Inc(p, xx);
+
+        b := b + p.B * Kernel[k + Radius];
+        g := g + p.G * Kernel[k + Radius];
+        r := r + p.R * Kernel[k + Radius];
+      end;
+
+      p := DstLine;
+      Inc(p, x);
+
+      p.B := Round(b);
+      p.G := Round(g);
+      p.R := Round(r);
+    end;
+  end;
+end;
+
+procedure BlurV(const Src, Dst: TBitmap; const Kernel: TArray<Single>; Radius: Integer);
+var
+  x, y, k, yy: Integer;
+  pSrc, pDst: PPixel32;
+  r, g, b: Single;
+begin
+  for y := 0 to Src.Height - 1 do
+  begin
+    for x := 0 to Src.Width - 1 do
+    begin
+      r := 0; g := 0; b := 0;
+
+      for k := -Radius to Radius do
+      begin
+        yy := y + k;
+        if yy < 0 then yy := 0 else
+        if yy >= Src.Height then yy := Src.Height - 1;
+
+        pSrc := Src.ScanLine[yy];
+        Inc(pSrc, x);
+
+        b := b + pSrc.B * Kernel[k + Radius];
+        g := g + pSrc.G * Kernel[k + Radius];
+        r := r + pSrc.R * Kernel[k + Radius];
+      end;
+
+      pDst := Dst.ScanLine[y];
+      Inc(pDst, x);
+
+      pDst.B := Round(b);
+      pDst.G := Round(g);
+      pDst.R := Round(r);
+    end;
+  end;
+end;
+
+function FastGaussianBlur(Bitmap: TBitmap; RadiusX, RadiusY: Integer) :TBitmap;
+var
+  Temp: TBitmap;
+  KernelX, KernelY: TArray<Single>;
+begin
+  if (RadiusX <= 0) and (RadiusY <= 0) then Exit;
+
+  Bitmap.PixelFormat := pf32bit;
+
+  Temp := TBitmap.Create;
+  try
+    Temp.Assign(Bitmap);
+    Temp.PixelFormat := pf32bit;
+
+    BuildBlurKernel(RadiusX, KernelX);
+    BuildBlurKernel(RadiusY, KernelY);
+
+    if RadiusX > 0 then
+      BlurH(Bitmap, Temp, KernelX, RadiusX)
+    else
+      Temp.Assign(Bitmap);
+
+    if RadiusY > 0 then
+      BlurV(Temp, Bitmap, KernelY, RadiusY)
+    else
+      Bitmap.Assign(Temp);
+
+  result := bitmap;
+
+  finally
+    Temp.Free;
+  end;
+end;
+
+
+procedure BoxBlurH(const Src, Dst: TBitmap; Radius: Integer);
+var
+  x, y, i, count: Integer;
+  SrcLine, DstLine: PPixel32;
+  r, g, b: Integer;
+  left, right: Integer;
+  p: PPixel32;
+begin
+  for y := 0 to Src.Height - 1 do
+  begin
+    SrcLine := Src.ScanLine[y];
+    DstLine := Dst.ScanLine[y];
+
+    r := 0; g := 0; b := 0;
+    count := 0;
+
+    // Initial window
+    for i := -Radius to Radius do
+    begin
+      x := i;
+      if x < 0 then x := 0 else
+      if x >= Src.Width then x := Src.Width - 1;
+
+      p := SrcLine;
+      Inc(p, x);
+
+      Inc(b, p.B);
+      Inc(g, p.G);
+      Inc(r, p.R);
+      Inc(count);
+    end;
+
+    for x := 0 to Src.Width - 1 do
+    begin
+      p := DstLine;
+      Inc(p, x);
+
+      p.B := b div count;
+      p.G := g div count;
+      p.R := r div count;
+
+      // Slide window
+      left := x - Radius;
+      right := x + Radius + 1;
+
+      if left < 0 then left := 0;
+      if left >= Src.Width then left := Src.Width - 1;
+
+      if right < 0 then right := 0;
+      if right >= Src.Width then right := Src.Width - 1;
+
+      // Remove left
+      p := SrcLine;
+      Inc(p, left);
+      Dec(b, p.B);
+      Dec(g, p.G);
+      Dec(r, p.R);
+
+      // Add right
+      p := SrcLine;
+      Inc(p, right);
+      Inc(b, p.B);
+      Inc(g, p.G);
+      Inc(r, p.R);
+    end;
+  end;
+end;
+
+procedure BoxBlurV(const Src, Dst: TBitmap; Radius: Integer);
+var
+  x, y, i, count: Integer;
+  r, g, b: Integer;
+  top, bottom: Integer;
+  p: PPixel32;
+begin
+  for x := 0 to Src.Width - 1 do
+  begin
+    r := 0; g := 0; b := 0;
+    count := 0;
+
+    // Initial window
+    for i := -Radius to Radius do
+    begin
+      y := i;
+      if y < 0 then y := 0 else
+      if y >= Src.Height then y := Src.Height - 1;
+
+      p := Src.ScanLine[y];
+      Inc(p, x);
+
+      Inc(b, p.B);
+      Inc(g, p.G);
+      Inc(r, p.R);
+      Inc(count);
+    end;
+
+    for y := 0 to Src.Height - 1 do
+    begin
+      p := Dst.ScanLine[y];
+      Inc(p, x);
+
+      p.B := b div count;
+      p.G := g div count;
+      p.R := r div count;
+
+      // Slide window
+      top := y - Radius;
+      bottom := y + Radius + 1;
+
+      if top < 0 then top := 0;
+      if top >= Src.Height then top := Src.Height - 1;
+
+      if bottom < 0 then bottom := 0;
+      if bottom >= Src.Height then bottom := Src.Height - 1;
+
+      // Remove top
+      p := Src.ScanLine[top];
+      Inc(p, x);
+      Dec(b, p.B);
+      Dec(g, p.G);
+      Dec(r, p.R);
+
+      // Add bottom
+      p := Src.ScanLine[bottom];
+      Inc(p, x);
+      Inc(b, p.B);
+      Inc(g, p.G);
+      Inc(r, p.R);
+    end;
+  end;
+end;
+
+function FastBoxBlur(Bitmap: TBitmap; RadiusX, RadiusY: Integer) : TBitmap;
+var
+  Temp: TBitmap;
+begin
+  if (RadiusX <= 0) and (RadiusY <= 0) then Exit;
+
+  Bitmap.PixelFormat := pf32bit;
+
+  Temp := TBitmap.Create;
+  try
+    Temp.Assign(Bitmap);
+    Temp.PixelFormat := pf32bit;
+
+    if RadiusX > 0 then
+      BoxBlurH(Bitmap, Temp, RadiusX)
+    else
+      Temp.Assign(Bitmap);
+
+    if RadiusY > 0 then
+      BoxBlurV(Temp, Bitmap, RadiusY)
+    else
+      Bitmap.Assign(Temp);
+
+      result := bitmap;
+
+  finally
+    Temp.Free;
+  end;
+end;
+{$R-}
+procedure BoxBlurH_MT_SIMD(const Src, Dst: TBitmap; Radius: Integer);
+var
+  x, y: Integer;
+  r, g, b: Integer;
+  count: Integer;
+  invCount: Single;
+
+  SrcLine, DstLine: PPixel32;
+  pSrc, pDst: PPixel32;
+  c: Cardinal;
+
+  XClamp: array of Integer;
+  left, right: Integer;
+  W: Integer;
+begin
+  W := Src.Width;
+  count := Radius * 2 + 1;
+  invCount := 1.0 / count;
+
+  // Precompute clamp table
+  SetLength(XClamp, W + Radius * 2 + 2);
+  for x := -Radius to W + Radius do
+  begin
+    if x < 0 then
+      XClamp[x + Radius] := 0
+    else if x >= W then
+      XClamp[x + Radius] := W - 1
+    else
+      XClamp[x + Radius] := x;
+  end;
+
+  for y := 0 to Src.Height - 1 do
+  begin
+    SrcLine := Src.ScanLine[y];
+    DstLine := Dst.ScanLine[y];
+
+    r := 0; g := 0; b := 0;
+
+    // Initial window
+    for x := -Radius to Radius do
+    begin
+      pSrc := SrcLine;
+      Inc(pSrc, XClamp[x + Radius]);
+      c := PCardinal(pSrc)^;
+
+      Inc(b, c and $FF);
+      Inc(g, (c shr 8) and $FF);
+      Inc(r, (c shr 16) and $FF);
+    end;
+
+    pDst := DstLine;
+
+    for x := 0 to W - 1 do
+    begin
+      // write pixel
+      pDst.B := round(b * invCount);
+      pDst.G := round(g * invCount);
+      pDst.R := round(r * invCount);
+
+      // remove left
+      left := XClamp[x - Radius + Radius];
+      pSrc := SrcLine;
+      Inc(pSrc, left);
+      c := PCardinal(pSrc)^;
+
+      Dec(b, c and $FF);
+      Dec(g, (c shr 8) and $FF);
+      Dec(r, (c shr 16) and $FF);
+
+      // add right
+      right := XClamp[x + Radius + 1 + Radius];
+      pSrc := SrcLine;
+      Inc(pSrc, right);
+      c := PCardinal(pSrc)^;
+
+      Inc(b, c and $FF);
+      Inc(g, (c shr 8) and $FF);
+      Inc(r, (c shr 16) and $FF);
+
+      Inc(pDst);
+    end;
+  end;
+end;
+procedure BoxBlurV_MT_SIMD(const Src, Dst: TBitmap; Radius: Integer);
+var
+  x, y: Integer;
+  r, g, b: Integer;
+  count: Integer;
+  invCount: Single;
+
+  Lines: array of PPixel32;
+  pSrc, pDst: PPixel32;
+  c: Cardinal;
+
+  YClamp: array of Integer;
+  top, bottom: Integer;
+  H: Integer;
+begin
+  H := Src.Height;
+  count := Radius * 2 + 1;
+  invCount := 1.0 / count;
+
+  // Cache scanlines
+  SetLength(Lines, H);
+  for y := 0 to H - 1 do
+    Lines[y] := Src.ScanLine[y];
+
+  // Precompute clamp table
+  SetLength(YClamp, H + Radius * 2 + 2);
+  for y := -Radius to H + Radius do
+  begin
+    if y < 0 then
+      YClamp[y + Radius] := 0
+    else if y >= H then
+      YClamp[y + Radius] := H - 1
+    else
+      YClamp[y + Radius] := y;
+  end;
+
+  for x := 0 to Src.Width - 1 do
+  begin
+    r := 0; g := 0; b := 0;
+
+    // Initial window
+    for y := -Radius to Radius do
+    begin
+      pSrc := Lines[YClamp[y + Radius]];
+      Inc(pSrc, x);
+      c := PCardinal(pSrc)^;
+
+      Inc(b, c and $FF);
+      Inc(g, (c shr 8) and $FF);
+      Inc(r, (c shr 16) and $FF);
+    end;
+
+    for y := 0 to H - 1 do
+    begin
+      pDst := Dst.ScanLine[y];
+      Inc(pDst, x);
+
+      pDst.B := round(b * invCount);
+      pDst.G := round(g * invCount);
+      pDst.R := round(r * invCount);
+
+      // remove top
+      top := YClamp[y - Radius + Radius];
+      pSrc := Lines[top];
+      Inc(pSrc, x);
+      c := PCardinal(pSrc)^;
+
+      Dec(b, c and $FF);
+      Dec(g, (c shr 8) and $FF);
+      Dec(r, (c shr 16) and $FF);
+
+      // add bottom
+      bottom := YClamp[y + Radius + 1 + Radius];
+      pSrc := Lines[bottom];
+      Inc(pSrc, x);
+      c := PCardinal(pSrc)^;
+
+      Inc(b, c and $FF);
+      Inc(g, (c shr 8) and $FF);
+      Inc(r, (c shr 16) and $FF);
+    end;
+  end;
+end;
+
+function FastBoxBlur_MT_SIMD(Bitmap: TBitmap; RadiusX, RadiusY: Integer) : TBitmap;
+var
+  Temp: TBitmap;
+begin
+  if (RadiusX <= 0) and (RadiusY <= 0) then Exit;
+
+  Bitmap.PixelFormat := pf32bit;
+
+  Temp := TBitmap.Create;
+  try
+    Temp.PixelFormat := pf32bit;
+    Temp.SetSize(Bitmap.Width, Bitmap.Height);
+    Temp.Canvas.Draw(0, 0, Bitmap);
+
+    if RadiusX > 0 then
+      BoxBlurH_MT_SIMD(Bitmap, Temp, RadiusX)
+    else
+      Temp.Assign(Bitmap);
+
+    if RadiusY > 0 then
+      BoxBlurV_MT_SIMD(Temp, Bitmap, RadiusY)
+    else
+      Bitmap.Assign(Temp);
+
+    // Convert AFTER blur
+    Bitmap.PixelFormat := pf24bit;
+
+    Result := TBitmap.Create;
+    Result.PixelFormat := pf24bit;
+    Result.SetSize(Bitmap.Width, Bitmap.Height);
+    Result.Canvas.Draw(0, 0, Bitmap);
+
+  finally
+    Temp.Free;
+  end;
+end;
+{$R+}
 end.

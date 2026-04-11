@@ -51,7 +51,7 @@ begin
   if FileName.IsEmpty then
   begin
     inc(intUntitledCount);
-    filename := format('untitled%d', [intUntitledCount]);
+    FileName := format('untitled%d', [intUntitledCount]);
 
   end;
 
@@ -62,7 +62,7 @@ begin
     if FileName.Contains(c) then
     begin
       ShowMessage
-        (Format('The character "%s" is not allowed in file names.', [c]));
+        (format('The character "%s" is not allowed in file names.', [c]));
       Exit;
     end;
 
@@ -122,7 +122,7 @@ begin
         for i := 0 to 255 do
           GPXPal[i] := Gp3Pal[i];
 
-        jamType := jamJIP;
+        jamtype := jamJIP;
 
         boolJipMode := true;
         boolGP3JAM := false;

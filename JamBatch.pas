@@ -243,10 +243,6 @@ end;
 procedure TJamBatchForm.btnBrowseOutputClick(Sender: TObject);
 var
   dlg: TFileOpenDialog;
-  Dir: string;
-  Files: TArray<string>;
-  f: string;
-  itm: TJamBatchItem;
 begin
   dlg := TFileOpenDialog.Create(nil);
   try
@@ -434,8 +430,6 @@ begin
 end;
 
 procedure TJamBatchForm.ConvertJam();
-var
-  i, j: integer;
 begin
 
   tmpArr := BatchList.ToArray;
@@ -466,7 +460,7 @@ begin
 
             FJamFile.ConvertHWJam(FHWJamFile, False);
 
-            FJamFile.SaveToFile(ThisItem.outputpath, false);
+            FJamFile.SaveToFile(ThisItem.outputpath, False);
 
             FJamFile.Free;
             FHWJamFile.Free;
@@ -481,7 +475,7 @@ begin
 
             FJamFile.ConvertHWJam(FHWJamFile, True);
 
-            FJamFile.SaveToFile(ThisItem.outputpath, false);
+            FJamFile.SaveToFile(ThisItem.outputpath, False);
 
             FJamFile.Free;
             FHWJamFile.Free;
@@ -503,7 +497,7 @@ begin
               for x := 0 to FJamFile.FEntries.Count - 1 do
                 FJamFile.ZeroPalette(x);
 
-            FJamFile.SaveToFile(ThisItem.outputpath, false);
+            FJamFile.SaveToFile(ThisItem.outputpath, False);
 
             FJamFile.Free;
             FOldJamFile.Free;
@@ -522,7 +516,7 @@ begin
               for x := 0 to FJamFile.FEntries.Count - 1 do
                 FJamFile.ZeroPalette(x);
 
-            FJamFile.SaveToFile(ThisItem.outputpath, false);
+            FJamFile.SaveToFile(ThisItem.outputpath, False);
 
             FJamFile.Free;
             FOldJamFile.Free;
@@ -553,7 +547,7 @@ begin
               for x := 0 to FJamFile.FEntries.Count - 1 do
                 FJamFile.ZeroPalette(x);
 
-            FJamFile.SaveToFile(ThisItem.outputpath, false);
+            FJamFile.SaveToFile(ThisItem.outputpath, False);
 
             FJamFile.Free;
             FOldJamFile.Free;
@@ -572,7 +566,7 @@ begin
               for x := 0 to FJamFile.FEntries.Count - 1 do
                 FJamFile.ZeroPalette(x);
 
-            FJamFile.SaveToFile(ThisItem.outputpath, false);
+            FJamFile.SaveToFile(ThisItem.outputpath, False);
 
             FJamFile.Free;
             FOldJamFile.Free;
@@ -679,7 +673,7 @@ end;
 
 procedure TJamBatchForm.RefreshListView;
 var
-  i: integer;
+
   itm: TJamBatchItem;
   li: TListItem;
 begin

@@ -5,13 +5,15 @@ interface
 uses
   Winapi.Windows, System.SysUtils,
   System.Classes, Vcl.Graphics, ShlWapi,
-  System.IOUtils;
+  System.IOUtils, Math;
 
 function ClampInt(const Value, MinValue, MaxValue: Integer): Integer;
 
 function ColorDist2(const A, B: TRGBTriple): Double;
 
 function StretchF(const BMP: TBitmap; OutWidth, OutHeight: Integer): TBitmap;
+
+function ResizeBilinear(const Src: TBitmap; NewW, NewH: Integer): TBitmap;
 
 function BoolToInt(B: Boolean): Integer;
 
@@ -48,6 +50,89 @@ begin
     Sqr(A.rgbtBlue - B.rgbtBlue);
 end;
 
+
+type
+  PRGBTriple = ^TRGBTriple;
+  TRGBTripleArray = array[0..0] of TRGBTriple;
+  PRGBTripleArray = ^TRGBTripleArray;
+
+
+{$R-}
+
+function ResizeBilinear(const Src: TBitmap; NewW, NewH: Integer): TBitmap;
+var
+  x, y: Integer;
+  gx, gy: Single;
+  gxi, gyi: Integer;
+  tx, ty: Single;
+
+  c00, c10, c01, c11: TRGBTriple;
+  r, g, b: Single;
+
+  SrcLine0, SrcLine1: PRGBTripleArray;
+  DstLine: PRGBTripleArray;
+
+  xRatio, yRatio: Single;
+begin
+  Result := TBitmap.Create;
+  Result.PixelFormat := pf24bit;
+  Result.Width := NewW;
+  Result.Height := NewH;
+
+  // Ensure source format
+  Src.PixelFormat := pf24bit;
+
+  xRatio := (Src.Width - 1) / NewW;
+  yRatio := (Src.Height - 1) / NewH;
+
+  for y := 0 to NewH - 1 do
+  begin
+    gy := y * yRatio;
+    gyi := Trunc(gy);
+    ty := gy - gyi;
+
+    SrcLine0 := Src.ScanLine[gyi];
+    SrcLine1 := Src.ScanLine[Min(gyi + 1, Src.Height - 1)];
+    DstLine := Result.ScanLine[y];
+
+    for x := 0 to NewW - 1 do
+    begin
+      gx := x * xRatio;
+      gxi := Trunc(gx);
+      tx := gx - gxi;
+
+      // Fetch 4 surrounding pixels
+      c00 := SrcLine0[gxi];
+      c10 := SrcLine0[Min(gxi + 1, Src.Width - 1)];
+      c01 := SrcLine1[gxi];
+      c11 := SrcLine1[Min(gxi + 1, Src.Width - 1)];
+
+      // Bilinear interpolation
+      b :=
+        c00.rgbtBlue * (1 - tx) * (1 - ty) +
+        c10.rgbtBlue * tx * (1 - ty) +
+        c01.rgbtBlue * (1 - tx) * ty +
+        c11.rgbtBlue * tx * ty;
+
+      g :=
+        c00.rgbtGreen * (1 - tx) * (1 - ty) +
+        c10.rgbtGreen * tx * (1 - ty) +
+        c01.rgbtGreen * (1 - tx) * ty +
+        c11.rgbtGreen * tx * ty;
+
+      r :=
+        c00.rgbtRed * (1 - tx) * (1 - ty) +
+        c10.rgbtRed * tx * (1 - ty) +
+        c01.rgbtRed * (1 - tx) * ty +
+        c11.rgbtRed * tx * ty;
+
+      DstLine[x].rgbtBlue := Round(b);
+      DstLine[x].rgbtGreen := Round(g);
+      DstLine[x].rgbtRed := Round(r);
+    end;
+  end;
+end;
+{$R+}
 function StretchF(const BMP: TBitmap; OutWidth, OutHeight: Integer): TBitmap;
 var
   DestRect: TRect;
