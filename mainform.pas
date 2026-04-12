@@ -16,7 +16,7 @@ uses
         JamGeneral, JamSW, JamHW, JamPalette, JamAnalysis, GeneralHelpers,
         newJamDlg,
         Vcl.Samples.Spin, Vcl.CheckLst, Vcl.ToolWin, Vcl.BaseImageCollection,
-        System.ImageList, jampalettedetector, jambatch, options;
+        System.ImageList, jampalettedetector, jambatch, options, about;
 
 type
 
@@ -207,7 +207,6 @@ type
                 undoTimer: TTimer;
                 Button1: TButton;
                 Button2: TButton;
-    Button3: TButton;
                 procedure JamTreeChange(Sender: TObject; Node: TTreeNode);
                 procedure PaintBoxPalettePaint(Sender: TObject);
                 procedure btnLoadJamClick(Sender: TObject);
@@ -366,6 +365,7 @@ type
                 procedure Button1Click(Sender: TObject);
                 procedure Button2Click(Sender: TObject);
     procedure Button3Click(Sender: TObject);
+    procedure About1Click(Sender: TObject);
 
         public
                 FJamFile: TJamFile;
@@ -1104,6 +1104,11 @@ begin
         RefreshCanvas;
         TreeReDraw;
         JamModified(true);
+end;
+
+procedure TFormMain.About1Click(Sender: TObject);
+begin
+aboutform.ShowModal;
 end;
 
 function TFormMain.AddJamTreeNode(Tree: TTreeView; Parent: TTreeNode;
@@ -1988,6 +1993,8 @@ begin
         end;
 
         boolUndo := true;
+
+        JamModified(false);
 
 end;
 
@@ -3102,6 +3109,9 @@ begin
         boolWidthChange := false;
         boolHeightChange := false;
         boolIDChange := false;
+
+
+        JamModified(false);
 
         boolCanvasChange := false;
 

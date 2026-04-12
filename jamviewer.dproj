@@ -146,6 +146,10 @@
             <FormType>dfm</FormType>
         </DCCReference>
         <DCCReference Include="GP3Track.pas"/>
+        <DCCReference Include="about.pas">
+            <Form>aboutForm</Form>
+            <FormType>dfm</FormType>
+        </DCCReference>
         <RcItem Include="assets\noPreview.png">
             <ResourceType>RCDATA</ResourceType>
             <ResourceId>noJamPreview</ResourceId>

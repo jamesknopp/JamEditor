@@ -2,8 +2,8 @@ object FormMain: TFormMain
   Left = 0
   Top = 0
   Caption = 'Jam Editor'
-  ClientHeight = 823
-  ClientWidth = 1271
+  ClientHeight = 796
+  ClientWidth = 1265
   Color = clBtnFace
   Font.Charset = DEFAULT_CHARSET
   Font.Color = clWindowText
@@ -2127,7 +2127,7 @@ object FormMain: TFormMain
     Left = 300
     Top = 34
     Width = 4
-    Height = 763
+    Height = 736
     StyleName = 'Windows'
     ExplicitTop = 33
     ExplicitHeight = 1045
@@ -2135,8 +2135,8 @@ object FormMain: TFormMain
   object ScrollBox1: TScrollBox
     Left = 304
     Top = 34
-    Width = 605
-    Height = 763
+    Width = 599
+    Height = 736
     HorzScrollBar.Smooth = True
     HorzScrollBar.Tracking = True
     VertScrollBar.Smooth = True
@@ -2160,20 +2160,11 @@ object FormMain: TFormMain
       OnMouseDown = ImageCanvasMouseDown
       OnMouseUp = ImageCanvasMouseUp
     end
-    object Button3: TButton
-      Left = 408
-      Top = 88
-      Width = 75
-      Height = 25
-      Caption = 'Button3'
-      TabOrder = 0
-      OnClick = Button3Click
-    end
   end
   object ToolBar1: TToolBar
     Left = 0
     Top = 0
-    Width = 1271
+    Width = 1265
     Height = 34
     AutoSize = True
     BorderWidth = 2
@@ -2539,8 +2530,8 @@ object FormMain: TFormMain
   object StatusBar1: TStatusBar
     AlignWithMargins = True
     Left = 3
-    Top = 800
-    Width = 1265
+    Top = 773
+    Width = 1259
     Height = 20
     Panels = <
       item
@@ -2557,7 +2548,7 @@ object FormMain: TFormMain
     Left = 0
     Top = 34
     Width = 300
-    Height = 763
+    Height = 736
     Margins.Left = 10
     Margins.Top = 10
     Margins.Right = 10
@@ -2577,7 +2568,7 @@ object FormMain: TFormMain
       Left = 10
       Top = 10
       Width = 280
-      Height = 743
+      Height = 716
       Align = alClient
       BevelEdges = []
       DoubleBuffered = True
@@ -2595,10 +2586,11 @@ object FormMain: TFormMain
     end
   end
   object CategoryPanelGroup1: TCategoryPanelGroup
-    Left = 909
+    Left = 903
     Top = 34
     Width = 362
-    Height = 763
+    Height = 736
+    VertScrollBar.Position = 513
     VertScrollBar.Tracking = True
     Align = alRight
     DoubleBuffered = False
@@ -2618,7 +2610,7 @@ object FormMain: TFormMain
     TabOrder = 4
     StyleName = 'Windows'
     object panel_JAMCanvas: TCategoryPanel
-      Top = 1245
+      Top = 732
       Height = 73
       Caption = 'JAM Canvas'
       DoubleBuffered = False
@@ -2668,7 +2660,7 @@ object FormMain: TFormMain
       end
     end
     object panel_PalEdit: TCategoryPanel
-      Top = 970
+      Top = 457
       Height = 275
       Caption = 'GP2/GP3 SW Palette Creation'
       DoubleBuffered = False
@@ -2883,7 +2875,7 @@ object FormMain: TFormMain
       end
     end
     object panel_ScaleParameters: TCategoryPanel
-      Top = 738
+      Top = 225
       Height = 232
       Caption = 'Scaling Parameters'
       DoubleBuffered = False
@@ -2993,7 +2985,7 @@ object FormMain: TFormMain
       end
     end
     object panel_TexFlags: TCategoryPanel
-      Top = 570
+      Top = 57
       Height = 168
       Caption = 'Texture Flags'
       DoubleBuffered = False
@@ -3045,7 +3037,7 @@ object FormMain: TFormMain
       end
     end
     object Panel_TexProperties: TCategoryPanel
-      Top = 434
+      Top = -79
       Height = 136
       Caption = 'Texture Properties'
       DoubleBuffered = False
@@ -3173,7 +3165,7 @@ object FormMain: TFormMain
       end
     end
     object panel_TexturePreview: TCategoryPanel
-      Top = 153
+      Top = -360
       Height = 281
       Caption = 'Texture Preview && Palette'
       DoubleBuffered = False
@@ -3229,7 +3221,7 @@ object FormMain: TFormMain
       end
     end
     object panel_RCRControls: TCategoryPanel
-      Top = 0
+      Top = -513
       Height = 153
       Caption = 'RCR Controls'
       DoubleBuffered = False
@@ -3609,6 +3601,7 @@ object FormMain: TFormMain
       object About1: TMenuItem
         Caption = 'About'
         Hint = 'About Jam Editor'
+        OnClick = About1Click
       end
     end
   end
