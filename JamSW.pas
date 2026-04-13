@@ -2781,17 +2781,26 @@ var
   MaskJam: TJamFile;
   x, y, w, h: integer;
   pRow: PByte;
+  savedRcrJam: boolean;
 begin
   Result := False;
 
   if not FileExists(MaskPath) then
     Exit;
 
+  // LoadFromFile calls CheckIfRCR which writes to the global boolRcrJam.
+  // The mask file (rcr?b) is not in rcrJAMList so it would set boolRcrJam=False,
+  // clobbering the True set by the parent RCR sprite load. Save and restore it.
+  savedRcrJam := boolRcrJam;
+
   MaskJam := TJamFile.Create;
   try
     MaskJam.SetGpxPal(boolGP2Jam);   // match palette mode of parent
     if not MaskJam.LoadFromFile(MaskPath, True) then
+    begin
+      boolRcrJam := savedRcrJam;
       Exit;
+    end;
 
     w := MaskJam.canvasWidth;
     h := MaskJam.canvasHeight;
@@ -2816,6 +2825,7 @@ begin
     Result := True;
   finally
     MaskJam.Free;
+    boolRcrJam := savedRcrJam;  // always restore, even on exception
   end;
 end;
 
