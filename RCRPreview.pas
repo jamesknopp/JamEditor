@@ -291,7 +291,7 @@ end;
 procedure TRCRPreviewForm.btnRenderClick(Sender: TObject);
 var
   angleName, tyreName: string;
-  rcrPath, liveryJamPath, chassisJamPath, tyrePath: string;
+  rcrPath, liveryJamPath, chassisJamPath, tyreJamPath: string;
   RcrJam: TJamFile;
   SpriteB, SpriteA: TBitmap;
   LiveryTex, ChassisTex, TyreTex: TBitmap;
@@ -303,27 +303,25 @@ begin
   if cboLivery.ItemIndex < 0 then begin SetStatus('Please select a livery.');      Exit; end;
 
   angleName      := cboAngle.Text;
-  rcrPath        := GetMainJamDir + angleName          + '.jam';
-  liveryJamPath  := GetLiveryDir  + cboLivery.Text     + '.jam';
-  chassisJamPath := GetMainJamDir + 'chassis3'         + '.jam';
+  rcrPath        := GetMainJamDir + angleName      + '.jam';
+  liveryJamPath  := GetLiveryDir  + cboLivery.Text + '.jam';
+  chassisJamPath := GetMainJamDir + 'chassis3'     + '.jam';
 
-  // Find first available tyre texture
-  tyrePath  := '';
-  TyreNames := TArray<string>.Create(
-    'whbridg0.bmp','whgood0.bmp','whmich0.bmp','whpire0.bmp',
-    'whstre0.bmp', 'whyoko0.bmp');
+  // Find first available tyre JAM in Gp3Jams\Main\
+  tyreJamPath := '';
+  TyreNames := ['whbridg0', 'whgood0', 'whmich0', 'whpire0', 'whstre0', 'whyoko0'];
   for tyreName in TyreNames do
-    if FileExists(GetLiveryDir + tyreName) then
+    if FileExists(GetMainJamDir + tyreName + '.jam') then
     begin
-      tyrePath := GetLiveryDir + tyreName;
+      tyreJamPath := GetMainJamDir + tyreName + '.jam';
       Break;
     end;
 
   // Validate
-  if not FileExists(rcrPath)       then begin SetStatus('RCR JAM not found: '      + rcrPath);        Exit; end;
-  if not FileExists(liveryJamPath) then begin SetStatus('Livery JAM not found: '   + liveryJamPath);  Exit; end;
-  if not FileExists(chassisJamPath)then begin SetStatus('chassis3.jam not found in: '+ GetMainJamDir);Exit; end;
-  if tyrePath = ''                 then begin SetStatus('No tyre BMP (wh*.bmp) in: '+ GetLiveryDir);  Exit; end;
+  if not FileExists(rcrPath)        then begin SetStatus('RCR JAM not found: '         + rcrPath);         Exit; end;
+  if not FileExists(liveryJamPath)  then begin SetStatus('Livery JAM not found: '      + liveryJamPath);   Exit; end;
+  if not FileExists(chassisJamPath) then begin SetStatus('chassis3.jam not found in: ' + GetMainJamDir);   Exit; end;
+  if tyreJamPath = ''               then begin SetStatus('No tyre JAM (wh*.jam) in: '  + GetMainJamDir);   Exit; end;
 
   SetStatus('Loading ' + angleName + '...');
   btnRender.Enabled := False;
@@ -354,6 +352,7 @@ begin
 
         LiveryTex  := LoadJamCanvas(liveryJamPath);
         ChassisTex := LoadJamCanvas(chassisJamPath);
+        TyreTex    := LoadJamCanvas(tyreJamPath);
 
         if not Assigned(LiveryTex) then
         begin
@@ -365,9 +364,11 @@ begin
           SetStatus('Failed to load chassis3.jam: ' + chassisJamPath);
           Exit;
         end;
-
-        TyreTex := TBitmap.Create;
-        TyreTex.LoadFromFile(tyrePath);
+        if not Assigned(TyreTex) then
+        begin
+          SetStatus('Failed to load tyre JAM: ' + tyreJamPath);
+          Exit;
+        end;
 
         try
           SetStatus('Rendering...');
