@@ -2,25 +2,26 @@ unit RCRPreview;
 
 // RCR Car Preview Form
 //
-// Allows the user to select a game version, RCR sprite angle (rcr1a-rcr5a),
-// and livery texture, then renders the full car sprite sheet using
-// RenderRCRCarSprite and displays the result.
+// Renders GP3/GP3 2000 car sprites by combining:
+//   - RCR sprite JAM  (rcr1a-rcr5a)  from Gp3Jams\Main\
+//   - Companion mask  (rcr1b-rcr5b)  from Gp3Jams\Main\ (auto-loaded)
+//   - Livery JAM      (e.g. ferrar98) from Gp3Jams\liveries\
+//   - Chassis JAM     (chassis3)     from Gp3Jams\Main\
+//   - Tyre texture    (wh*.bmp)      from Gp3Jams\liveries\
 //
-// Texture path resolution (GP3 / GP3 2000):
-//   RCR JAMs + livery BMPs + chassis.bmp : <GameRoot>\Gp3Jams\Main\
-//   Surface/SRF JAMs                     : <GameRoot>\surfgen\
-//
-// The companion mask (rcr?b.jam) is loaded automatically alongside the
-// selected RCR angle JAM (handled by TJamFile.LoadFromFile).
+// GP3 liveries  : arrows98 benett98 ferrar98 jordan98 mclare98 minardi98
+//                 prost98 sauber98 stewar98 tyrrel98 willia98
+// GP3 2000 liveries: 1mclar00 2mclar00 arrows00 bar00 benett00 ferrar00
+//                    jaguar00 jordan00 minardi00 prost00 sauber00 willia00
 
 interface
 
 uses
   Winapi.Windows,
   System.SysUtils, System.IOUtils, System.Types, System.StrUtils,
-  Vcl.Graphics, Vcl.Controls, Vcl.Forms, Vcl.Dialogs,
+  Vcl.Controls, Vcl.Forms, Vcl.Dialogs,
   Vcl.StdCtrls, Vcl.ExtCtrls,
-  JamGeneral, JamSW, RCRRender;
+  JamGeneral, JamSW, RCRRender, Vcl.Graphics;
 
 type
   TGameChoice = (gcGP3, gcGP3_2000);
@@ -42,16 +43,17 @@ type
     procedure btnRenderClick(Sender: TObject);
   private
     function  GetGameRoot: string;
-    function  GetMainJamDir: string;   // Gp3Jams\Main\  — RCR JAMs
-    function  GetLiveryDir: string;    // Gp3Jams\liveries\  — livery/chassis/tyre BMPs
+    function  GetMainJamDir: string;  // Gp3Jams\Main\  — RCR JAMs + chassis3.jam
+    function  GetLiveryDir: string;   // Gp3Jams\liveries\ — livery JAMs + tyre BMPs
+    function  GetLiveryList: TArray<string>;
+    function  LoadJamCanvas(const Path: string): TBitmap;
     procedure PopulateGameList;
     procedure PopulateAngles;
     procedure PopulateLiveries;
     procedure SetStatus(const Msg: string);
     procedure AutoDetectGame;
   public
-    // Optional: set before showing to pre-select the angle matching
-    // the currently open JAM (e.g. 'rcr1a').
+    // Set before showing to pre-select the angle matching the open JAM.
     PreselectedAngle: string;
   end;
 
@@ -62,8 +64,18 @@ implementation
 
 {$R *.dfm}
 
+const
+  // Hardcoded livery JAM names per game version
+  GP3LiveryNames: array [0..10] of string = (
+    'arrows98', 'benett98', 'ferrar98', 'jordan98', 'mclare98',
+    'minardi98', 'prost98',  'sauber98', 'stewar98', 'tyrrel98', 'willia98');
+
+  GP3_2000LiveryNames: array [0..11] of string = (
+    '1mclar00', '2mclar00', 'arrows00', 'bar00',    'benett00', 'ferrar00',
+    'jaguar00', 'jordan00', 'minardi00','prost00',   'sauber00', 'willia00');
+
 // ---------------------------------------------------------------------------
-//  Helpers
+//  Path helpers
 // ---------------------------------------------------------------------------
 
 function TRCRPreviewForm.GetGameRoot: string;
@@ -80,16 +92,26 @@ end;
 
 function TRCRPreviewForm.GetMainJamDir: string;
 begin
-  // RCR sprite JAMs (rcr1a.jam – rcr5a.jam and their rcr?b masks)
+  // RCR sprite JAMs (rcr?a/b) and chassis3.jam
   Result := IncludeTrailingPathDelimiter(GetGameRoot) + 'Gp3Jams\Main\';
 end;
 
 function TRCRPreviewForm.GetLiveryDir: string;
 begin
-  // Livery BMPs (ferrari.bmp etc.), chassis.bmp, tyre textures
-  // SW liveries: Gp3Jams\liveries\
-  // HW liveries: Gp3JamsH\liveries\  (not used here — SW render only)
+  // SW livery JAMs and tyre BMPs
   Result := IncludeTrailingPathDelimiter(GetGameRoot) + 'Gp3Jams\liveries\';
+end;
+
+function TRCRPreviewForm.GetLiveryList: TArray<string>;
+begin
+  if cboGame.ItemIndex < 0 then
+    Exit(nil);
+  case TGameChoice(cboGame.Items.Objects[cboGame.ItemIndex]) of
+    gcGP3:      Result := TArray<string>(GP3LiveryNames);
+    gcGP3_2000: Result := TArray<string>(GP3_2000LiveryNames);
+  else
+    Result := nil;
+  end;
 end;
 
 procedure TRCRPreviewForm.SetStatus(const Msg: string);
@@ -99,19 +121,43 @@ begin
 end;
 
 // ---------------------------------------------------------------------------
+//  Load the rendered canvas from a JAM file as a TBitmap.
+//  Caller owns the returned bitmap.  Returns nil if load fails.
+// ---------------------------------------------------------------------------
+function TRCRPreviewForm.LoadJamCanvas(const Path: string): TBitmap;
+var
+  Jam: TJamFile;
+begin
+  Result := nil;
+  if not FileExists(Path) then
+    Exit;
+
+  Jam := TJamFile.Create;
+  try
+    Jam.SetGpxPal(boolGP2Jam);
+    if not Jam.LoadFromFile(Path, False) then
+      Exit;
+    if not Assigned(Jam.originalCanvas) then
+      Exit;
+
+    Result := TBitmap.Create;
+    Result.Assign(Jam.originalCanvas);
+  finally
+    Jam.Free;
+  end;
+end;
+
+// ---------------------------------------------------------------------------
 //  Population helpers
 // ---------------------------------------------------------------------------
 
 procedure TRCRPreviewForm.PopulateGameList;
 const
   GameNames: array [TGameChoice] of string = (
-    'Grand Prix 3',
-    'Grand Prix 3 2000'
-  );
+    'Grand Prix 3', 'Grand Prix 3 2000');
 var
   gc: TGameChoice;
-  root: string;
-  prevSel: string;
+  root, prevSel: string;
 begin
   prevSel := cboGame.Text;
   cboGame.Items.Clear;
@@ -126,7 +172,6 @@ begin
       cboGame.Items.AddObject(GameNames[gc], TObject(Ord(gc)));
   end;
 
-  // Restore previous selection if still available
   if prevSel <> '' then
     cboGame.ItemIndex := cboGame.Items.IndexOf(prevSel);
   if (cboGame.ItemIndex < 0) and (cboGame.Items.Count > 0) then
@@ -137,7 +182,7 @@ procedure TRCRPreviewForm.PopulateAngles;
 const
   Angles: array [1..5] of string = ('rcr1a','rcr2a','rcr3a','rcr4a','rcr5a');
 var
-  dir, path, prevSel: string;
+  dir, prevSel: string;
   n: integer;
 begin
   prevSel := cboAngle.Text;
@@ -148,16 +193,13 @@ begin
   dir := GetMainJamDir;
   if not DirectoryExists(dir) then
   begin
-    SetStatus('Game directory not found: ' + dir);
+    SetStatus('RCR directory not found: ' + dir);
     Exit;
   end;
 
   for n := 1 to 5 do
-  begin
-    path := dir + Angles[n] + '.jam';
-    if FileExists(path) then
+    if FileExists(dir + Angles[n] + '.jam') then
       cboAngle.Items.Add(Angles[n]);
-  end;
 
   if cboAngle.Items.Count = 0 then
   begin
@@ -172,38 +214,31 @@ end;
 
 procedure TRCRPreviewForm.PopulateLiveries;
 var
-  dir, name, prevSel: string;
-  files: TStringDynArray;
-  f: string;
+  dir, prevSel, name: string;
+  liveries: TArray<string>;
 begin
   prevSel := cboLivery.Text;
   cboLivery.Items.Clear;
 
-  // SW liveries live in Gp3Jams\liveries\
-  dir := GetLiveryDir;
+  dir      := GetLiveryDir;
+  liveries := GetLiveryList;
+
+  if liveries = nil then
+    Exit;
+
   if not DirectoryExists(dir) then
   begin
     SetStatus('Livery directory not found: ' + dir);
     Exit;
   end;
 
-  files := TDirectory.GetFiles(dir, '*.bmp');
-  for f in files do
-  begin
-    name := LowerCase(ExtractFileName(f));
-    // Exclude non-livery assets that may also live here
-    if StartsStr('wh',      name) then Continue;  // tyres
-    if StartsStr('car_srf', name) then Continue;  // UV atlas
-    if StartsStr('hlm_srf', name) then Continue;  // helmet atlas
-    if StartsStr('ccp_srf', name) then Continue;  // cockpit atlas
-    if StartsStr('wh_srf',  name) then Continue;  // tyre atlas
-    if name = 'chassis.bmp'        then Continue;
-    cboLivery.Items.Add(ChangeFileExt(ExtractFileName(f), ''));
-  end;
+  for name in liveries do
+    if FileExists(dir + name + '.jam') then
+      cboLivery.Items.Add(name);
 
   if cboLivery.Items.Count = 0 then
   begin
-    SetStatus('No livery BMP files found in: ' + dir);
+    SetStatus('No livery JAM files found in: ' + dir);
     Exit;
   end;
 
@@ -215,22 +250,18 @@ end;
 procedure TRCRPreviewForm.AutoDetectGame;
 var
   i: integer;
-  obj: TGameChoice;
+  gc: TGameChoice;
   root: string;
 begin
-  // If a JAM was previously loaded, try to match its path against game roots
-  if PreselectedAngle = '' then
-    Exit;
   for i := 0 to cboGame.Items.Count - 1 do
   begin
-    obj := TGameChoice(cboGame.Items.Objects[i]);
-    case obj of
+    gc := TGameChoice(cboGame.Items.Objects[i]);
+    case gc of
       gcGP3:      root := strGP3Location;
       gcGP3_2000: root := strGP32kLocation;
     else
       Continue;
     end;
-    // Check if the game dir exists and contains rcr jams
     if DirectoryExists(IncludeTrailingPathDelimiter(root) + 'Gp3Jams\Main\') then
     begin
       cboGame.ItemIndex := i;
@@ -264,37 +295,25 @@ end;
 
 procedure TRCRPreviewForm.btnRenderClick(Sender: TObject);
 var
-  rcrPath, liveryPath, chassisPath, tyrePath: string;
   angleName, tyreName: string;
+  rcrPath, liveryJamPath, chassisJamPath, tyrePath: string;
   RcrJam: TJamFile;
   SpriteB, SpriteA: TBitmap;
-  FerrariTex, ChassisTex, TyreTex: TBitmap;
+  LiveryTex, ChassisTex, TyreTex: TBitmap;
   Rendered: TBitmap;
   TyreNames: TArray<string>;
 begin
-  if cboGame.ItemIndex < 0 then
-  begin
-    SetStatus('Please select a game version.');
-    Exit;
-  end;
-  if cboAngle.ItemIndex < 0 then
-  begin
-    SetStatus('Please select an RCR angle.');
-    Exit;
-  end;
-  if cboLivery.ItemIndex < 0 then
-  begin
-    SetStatus('Please select a livery.');
-    Exit;
-  end;
+  if cboGame.ItemIndex  < 0 then begin SetStatus('Please select a game version.'); Exit; end;
+  if cboAngle.ItemIndex < 0 then begin SetStatus('Please select an RCR angle.');   Exit; end;
+  if cboLivery.ItemIndex < 0 then begin SetStatus('Please select a livery.');      Exit; end;
 
-  angleName  := cboAngle.Text;
-  rcrPath    := GetMainJamDir + angleName + '.jam';
-  liveryPath := GetLiveryDir  + cboLivery.Text + '.bmp';
-  chassisPath:= GetLiveryDir  + 'chassis.bmp';
+  angleName      := cboAngle.Text;
+  rcrPath        := GetMainJamDir + angleName          + '.jam';
+  liveryJamPath  := GetLiveryDir  + cboLivery.Text     + '.jam';
+  chassisJamPath := GetMainJamDir + 'chassis3'         + '.jam';
 
-  // Find first available tyre texture in livery directory
-  tyrePath := '';
+  // Find first available tyre texture
+  tyrePath  := '';
   TyreNames := TArray<string>.Create(
     'whbridg0.bmp','whgood0.bmp','whmich0.bmp','whpire0.bmp',
     'whstre0.bmp', 'whyoko0.bmp');
@@ -306,80 +325,72 @@ begin
     end;
 
   // Validate
-  if not FileExists(rcrPath) then
-  begin
-    SetStatus('RCR JAM not found: ' + rcrPath);
-    Exit;
-  end;
-  if not FileExists(liveryPath) then
-  begin
-    SetStatus('Livery not found: ' + liveryPath);
-    Exit;
-  end;
-  if not FileExists(chassisPath) then
-  begin
-    SetStatus('chassis.bmp not found in: ' + GetLiveryDir);
-    Exit;
-  end;
-  if tyrePath = '' then
-  begin
-    SetStatus('No tyre texture (wh*.bmp) found in: ' + GetLiveryDir);
-    Exit;
-  end;
+  if not FileExists(rcrPath)       then begin SetStatus('RCR JAM not found: '      + rcrPath);        Exit; end;
+  if not FileExists(liveryJamPath) then begin SetStatus('Livery JAM not found: '   + liveryJamPath);  Exit; end;
+  if not FileExists(chassisJamPath)then begin SetStatus('chassis3.jam not found in: '+ GetMainJamDir);Exit; end;
+  if tyrePath = ''                 then begin SetStatus('No tyre BMP (wh*.bmp) in: '+ GetLiveryDir);  Exit; end;
 
   SetStatus('Loading ' + angleName + '...');
   btnRender.Enabled := False;
   try
-    // Load the RCR JAM (auto-loads companion mask rcr?b.jam)
+    // --- Load RCR sprite JAM (auto-loads companion mask) ---
     RcrJam := TJamFile.Create;
     try
       RcrJam.SetGpxPal(boolGP2Jam);
       if not RcrJam.LoadFromFile(rcrPath, False) then
       begin
-        SetStatus('Failed to load: ' + rcrPath);
+        SetStatus('Failed to load RCR JAM: ' + rcrPath);
         Exit;
       end;
 
       if not Assigned(RcrJam.rcrMask) then
       begin
-        SetStatus('Mask file not found (expected ' +
-          ChangeFileExt(angleName, '') +
-          Copy(angleName, Length(angleName), 1).Replace('a', 'b') +
-          '.jam alongside the sprite).');
+        SetStatus('Mask not found — expected ' +
+          Copy(angleName, 1, Length(angleName) - 1) + 'b.jam alongside ' + angleName + '.jam');
         Exit;
       end;
 
-      // Extract full-canvas raw UV planes
-      SpriteB := RcrJam.ExtractRCRPlaneRaw(True);   // B = U (odd bytes)
-      SpriteA := RcrJam.ExtractRCRPlaneRaw(False);  // A = V (even bytes)
+      // Extract full-canvas UV planes from raw data
+      SpriteB := RcrJam.ExtractRCRPlaneRaw(True);   // B plane = U coords
+      SpriteA := RcrJam.ExtractRCRPlaneRaw(False);  // A plane = V coords
       try
-        // Load textures
-        FerrariTex := TBitmap.Create;
-        ChassisTex := TBitmap.Create;
-        TyreTex    := TBitmap.Create;
-        try
-          SetStatus('Loading textures...');
-          FerrariTex.LoadFromFile(liveryPath);
-          ChassisTex.LoadFromFile(chassisPath);
-          TyreTex.LoadFromFile(tyrePath);
+        // --- Load textures from JAM files ---
+        SetStatus('Loading textures...');
 
+        LiveryTex  := LoadJamCanvas(liveryJamPath);
+        ChassisTex := LoadJamCanvas(chassisJamPath);
+
+        if not Assigned(LiveryTex) then
+        begin
+          SetStatus('Failed to load livery JAM: ' + liveryJamPath);
+          Exit;
+        end;
+        if not Assigned(ChassisTex) then
+        begin
+          SetStatus('Failed to load chassis3.jam: ' + chassisJamPath);
+          Exit;
+        end;
+
+        TyreTex := TBitmap.Create;
+        TyreTex.LoadFromFile(tyrePath);
+
+        try
           SetStatus('Rendering...');
           Rendered := RenderRCRCarSprite(
             SpriteB, SpriteA,
             RcrJam.rcrMask,
-            FerrariTex, ChassisTex, TyreTex,
+            LiveryTex, ChassisTex, TyreTex,
             jamGP3SW);
           try
             imgPreview.Picture.Assign(Rendered);
             imgPreview.AutoSize := True;
-            SetStatus(Format('Done — %s with %s  (%dx%d)',
-              [angleName, cboLivery.Text,
-               Rendered.Width, Rendered.Height]));
+            SetStatus(Format('Done — %s with %s  (%d x %d)',
+              [angleName, cboLivery.Text, Rendered.Width, Rendered.Height]));
           finally
             Rendered.Free;
           end;
         finally
-          FerrariTex.Free;
+          LiveryTex.Free;
           ChassisTex.Free;
           TyreTex.Free;
         end;
