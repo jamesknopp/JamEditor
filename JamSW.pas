@@ -149,6 +149,14 @@ type
     // Returns True if the mask file was found and loaded successfully.
     function LoadRCRMask(const MaskPath: string): boolean;
 
+    // Extract the full-canvas A (even, odd=False) or B (odd=True) plane
+    // directly from FRawData as a pf8bit indexed bitmap (256 x canvasHeight).
+    // Each pixel stores the raw UV index value (0-255).
+    // FRawData layout: canvasHeight rows x 512 bytes/row;
+    //   even bytes = A plane, odd bytes = B plane.
+    //   X0 = FInfo.X (+256 for odd-Y entries) selects left/right raw half.
+    function ExtractRCRPlaneRaw(odd: boolean): TBitmap;
+
     function DrawOutlines(JamCanvas: TBitmap): TBitmap;
 
     procedure UpdateTextureSize(JamId: integer; Height: integer;
@@ -2707,6 +2715,58 @@ begin
 
   finally
     JamBMP.free;
+  end;
+end;
+
+// ---------------------------------------------------------------------------
+//  ExtractRCRPlaneRaw
+//  Returns a 256 x canvasHeight pf8bit bitmap containing raw UV index values
+//  for the full sprite canvas.  odd=False -> A plane (V coords),
+//  odd=True -> B plane (U coords).
+// ---------------------------------------------------------------------------
+function TJamFile.ExtractRCRPlaneRaw(odd: boolean): TBitmap;
+var
+  i, x, y, X0, Y0, W, H: integer;
+  dstRow: PByte;
+  srcOfs: integer;
+begin
+  Result := TBitmap.Create;
+  Result.Width       := 256;
+  Result.Height      := canvasHeight;
+  Result.PixelFormat := pf8bit;
+  Result.Palette     := CreateGPxPal;
+
+  // Zero-fill (transparent = index 0)
+  for y := 0 to canvasHeight - 1 do
+    FillChar(Result.ScanLine[y]^, 256, 0);
+
+  // FRawData is canvasHeight rows of 512 bytes each (stride = 512).
+  // Within each row, pairs [X0 + x*2, X0 + x*2 + 1] hold (A, B) for pixel x.
+  // X0 = FInfo.X for even-Y entries (left half of raw row, 0-255).
+  // X0 = FInfo.X + 256 for odd-Y entries (right half of raw row, 256-511).
+  // Both halves display at the same column range (0..FInfo.Width-1).
+  for i := 0 to FEntries.Count - 1 do
+  begin
+    X0 := FEntries[i].FInfo.X;
+    if FEntries[i].FInfo.Y mod 2 <> 0 then
+      Inc(X0, 256);
+    Y0 := FEntries[i].FInfo.Y div 2;
+    W  := FEntries[i].FInfo.Width;
+    H  := FEntries[i].FInfo.Height;
+
+    for y := 0 to H - 1 do
+    begin
+      if Y0 + y >= canvasHeight then Break;
+      dstRow := Result.ScanLine[Y0 + y];
+      for x := 0 to W - 1 do
+      begin
+        srcOfs := (Y0 + y) * 512 + X0 + x * 2;
+        if odd then
+          dstRow[x] := FRawData[srcOfs + 1]   // B plane (U)
+        else
+          dstRow[x] := FRawData[srcOfs];       // A plane (V)
+      end;
+    end;
   end;
 end;
 

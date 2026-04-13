@@ -14,7 +14,7 @@ uses
         Vcl.VirtualImageList, System.Generics.Collections,
 
         JamGeneral, JamSW, JamHW, JamPalette, JamAnalysis, GeneralHelpers,
-        RCRRender,
+        RCRRender, RCRPreview,
         newJamDlg,
         Vcl.Samples.Spin, Vcl.CheckLst, Vcl.ToolWin, Vcl.BaseImageCollection,
         System.ImageList, jampalettedetector, jambatch, options, about;
@@ -2728,109 +2728,16 @@ end;
 
 procedure TFormMain.btnRenderCarClick(Sender: TObject);
 var
-  jamDir: string;
-  ferrariPath, chassisPath, tyrePath: string;
-  FerrariTex, ChassisTex, TyreTex: TBitmap;
-  entry: TJamEntry;
-  rendered: TBitmap;
+  frm: TRCRPreviewForm;
 begin
-  if not boolJamLoaded or not Assigned(FJamFile) then
-  begin
-    ShowMessage('No JAM file loaded.');
-    Exit;
-  end;
-
-  if not boolRcrJam then
-  begin
-    ShowMessage('Current JAM is not an RCR sprite.');
-    Exit;
-  end;
-
-  if not Assigned(FJamFile.rcrMask) then
-  begin
-    ShowMessage('No mask file found (rcr?b.jam expected alongside the sprite).');
-    Exit;
-  end;
-
-  if FJamFile.FEntries.Count = 0 then
-  begin
-    ShowMessage('RCR JAM has no entries.');
-    Exit;
-  end;
-
-  // Resolve texture paths from the same directory as the loaded JAM
-  jamDir := IncludeTrailingPathDelimiter(ExtractFilePath(FJamFile.JamFullPath));
-  ferrariPath := jamDir + 'ferrari.bmp';
-  chassisPath := jamDir + 'chassis.bmp';
-
-  // Tyre texture: try common names in order
-  tyrePath := '';
-  for var tyreName in TArray<string>.Create(
-    'whbridg0.bmp', 'whgood0.bmp', 'whmich0.bmp', 'whpire0.bmp') do
-  begin
-    if FileExists(jamDir + tyreName) then
-    begin
-      tyrePath := jamDir + tyreName;
-      Break;
-    end;
-  end;
-
-  // Validate required files
-  if not FileExists(ferrariPath) then
-  begin
-    ShowMessage('ferrari.bmp not found in JAM directory:' + #13#10 + jamDir);
-    Exit;
-  end;
-  if not FileExists(chassisPath) then
-  begin
-    ShowMessage('chassis.bmp not found in JAM directory:' + #13#10 + jamDir);
-    Exit;
-  end;
-  if tyrePath = '' then
-  begin
-    ShowMessage('No tyre texture (whbridg0.bmp etc.) found in JAM directory:' + #13#10 + jamDir);
-    Exit;
-  end;
-
-  // Load textures
-  FerrariTex := TBitmap.Create;
-  ChassisTex := TBitmap.Create;
-  TyreTex    := TBitmap.Create;
+  frm := TRCRPreviewForm.Create(Self);
   try
-    FerrariTex.LoadFromFile(ferrariPath);
-    ChassisTex.LoadFromFile(chassisPath);
-    TyreTex.LoadFromFile(tyrePath);
-
-    // Use first entry's rcrA/rcrB planes
-    entry := FJamFile.FEntries[0];
-
-    if not Assigned(entry.rcrA) or not Assigned(entry.rcrB) then
-    begin
-      ShowMessage('RCR sprite planes not loaded (rcrA/rcrB missing).');
-      Exit;
-    end;
-
-    rendered := RenderRCRCarSprite(
-      entry.rcrB,          // B plane = U coords
-      entry.rcrA,          // A plane = V coords
-      FJamFile.rcrMask,    // segmentation mask from rcr?b.jam
-      FerrariTex,
-      ChassisTex,
-      TyreTex,
-      jamtype);
-
-    try
-      // Display in the texture preview area
-      ImageEntry.Picture.Assign(rendered);
-      ImageEntry.Refresh;
-    finally
-      rendered.Free;
-    end;
-
+    // Pre-select the currently loaded RCR angle if one is open
+    if boolJamLoaded and boolRcrJam and Assigned(FJamFile) then
+      frm.PreselectedAngle := FJamFile.JamFileName;
+    frm.ShowModal;
   finally
-    FerrariTex.Free;
-    ChassisTex.Free;
-    TyreTex.Free;
+    frm.Free;
   end;
 end;
 

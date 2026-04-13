@@ -150,6 +150,11 @@
             <Form>aboutForm</Form>
             <FormType>dfm</FormType>
         </DCCReference>
+        <DCCReference Include="RCRRender.pas"/>
+        <DCCReference Include="RCRPreview.pas">
+            <Form>RCRPreviewForm</Form>
+            <FormType>dfm</FormType>
+        </DCCReference>
         <RcItem Include="assets\noPreview.png">
             <ResourceType>RCDATA</ResourceType>
             <ResourceId>noJamPreview</ResourceId>
