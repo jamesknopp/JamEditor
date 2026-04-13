@@ -46,7 +46,7 @@ uses
 function RenderRCRSprite(SpriteB, SpriteA,
                          AtlasB,  AtlasA,
                          TextureMap: TBitmap;
-                         GameMode: TGameJamType = jamGP3SW;
+                         GameMode: TJamType = jamGP3SW;
                          TransparentIndex: Byte = 0): TBitmap;
 
 // Masked multi-texture RCR render for GP3 car sprites.
@@ -60,7 +60,7 @@ function RenderRCRSprite(SpriteB, SpriteA,
 function RenderRCRCarSprite(SpriteB, SpriteA,
                              MaskBmp: TBitmap;
                              FerrariTex, ChassisTex, TyreTex: TBitmap;
-                             GameMode: TGameJamType = jamGP3SW): TBitmap;
+                             GameMode: TJamType = jamGP3SW): TBitmap;
 
 implementation
 
@@ -75,7 +75,7 @@ begin
   Result.PixelFormat := pf24bit;
 end;
 
-function BgFromMode(GameMode: TGameJamType): TColor;
+function BgFromMode(GameMode: TJamType): TColor;
 begin
   case GameMode of
     jamGP2:   Result := TCol_TransGP2;
@@ -92,7 +92,7 @@ end;
 function RenderRCRSprite(SpriteB, SpriteA,
                          AtlasB,  AtlasA,
                          TextureMap: TBitmap;
-                         GameMode: TGameJamType = jamGP3SW;
+                         GameMode: TJamType = jamGP3SW;
                          TransparentIndex: Byte = 0): TBitmap;
 var
   x, y:   Integer;
@@ -163,7 +163,7 @@ end;
 function RenderRCRCarSprite(SpriteB, SpriteA,
                              MaskBmp: TBitmap;
                              FerrariTex, ChassisTex, TyreTex: TBitmap;
-                             GameMode: TGameJamType = jamGP3SW): TBitmap;
+                             GameMode: TJamType = jamGP3SW): TBitmap;
 var
   x, y:      Integer;
   uIdx,
