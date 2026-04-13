@@ -69,6 +69,11 @@ type
 
     originalCanvas: TBitmap;
 
+    // Companion mask bitmap for RCR car sprites (loaded from rcr1b, rcr2b, etc.)
+    // pf8bit indexed; each pixel value is the segmentation mask index (0-11).
+    // Nil if no companion mask file was found.
+    rcrMask: TBitmap;
+
     function UnJam(const Data: TBytes): TBytes;
     constructor Create;
     destructor Destroy; override;
@@ -138,6 +143,11 @@ type
     function RenderJamCanvas(UIUpdate: boolean): TBitmap;
 
     procedure DrawBaseCanvas(clean: boolean);
+
+    // Load the companion mask JAM (e.g. rcr1b alongside rcr1a).
+    // Extracts the raw canvas as a pf8bit bitmap into rcrMask.
+    // Returns True if the mask file was found and loaded successfully.
+    function LoadRCRMask(const MaskPath: string): boolean;
 
     function DrawOutlines(JamCanvas: TBitmap): TBitmap;
 
@@ -391,6 +401,7 @@ constructor TJamFile.Create;
 begin
   FEntries := TList<TJamEntry>.Create;
   boolRcrJam := False;
+  rcrMask := nil;
 
   // CanvasBitmap := TBitmap.Create;
   canvasHeight := 256;
@@ -425,6 +436,9 @@ begin
 
   if assigned(originalCanvas) then
     freeAndNil(originalCanvas);
+
+  if assigned(rcrMask) then
+    freeAndNil(rcrMask);
 
   inherited;
 end;
@@ -768,6 +782,17 @@ begin
 
   JamFileName := sFilename;
   JamFullPath := FileName;
+
+  // Auto-load companion mask for car RCR sprites (rcr1a -> rcr1b, rcr2a -> rcr2b, etc.)
+  // The mask file is a normal (non-RCR) JAM in the same directory.
+  if boolRcrJam and (Length(sFilename) > 1) and
+     (sFilename[Length(sFilename)] = 'a') then
+  begin
+    var maskBase := Copy(sFilename, 1, Length(sFilename) - 1) + 'b';
+    var maskPath := IncludeTrailingPathDelimiter(ExtractFilePath(FileName))
+                  + maskBase + ExtractFileExt(FileName);
+    LoadRCRMask(maskPath);
+  end;
 
   Result := True;
 end;
@@ -2682,6 +2707,55 @@ begin
 
   finally
     JamBMP.free;
+  end;
+end;
+
+// ---------------------------------------------------------------------------
+//  LoadRCRMask
+//  Loads a companion mask JAM (e.g. rcr1b alongside rcr1a) and extracts its
+//  raw canvas as a pf8bit bitmap stored in rcrMask.
+//  Each pixel value is the segmentation index (0-11).
+// ---------------------------------------------------------------------------
+function TJamFile.LoadRCRMask(const MaskPath: string): boolean;
+var
+  MaskJam: TJamFile;
+  x, y, w, h: integer;
+  pRow: PByte;
+begin
+  Result := False;
+
+  if not FileExists(MaskPath) then
+    Exit;
+
+  MaskJam := TJamFile.Create;
+  try
+    MaskJam.SetGpxPal(boolGP2Jam);   // match palette mode of parent
+    if not MaskJam.LoadFromFile(MaskPath, True) then
+      Exit;
+
+    w := MaskJam.canvasWidth;
+    h := MaskJam.canvasHeight;
+
+    if Assigned(rcrMask) then
+      FreeAndNil(rcrMask);
+
+    rcrMask := TBitmap.Create;
+    rcrMask.Width       := w;
+    rcrMask.Height      := h;
+    rcrMask.PixelFormat := pf8bit;
+    rcrMask.Palette     := CreateGPxPal;
+
+    // Copy raw canvas data directly as index bytes
+    // MaskJam.FRawData is canvasWidth * canvasHeight bytes (256 * height)
+    for y := 0 to h - 1 do
+    begin
+      pRow := rcrMask.ScanLine[y];
+      Move(MaskJam.FRawData[y * w], pRow^, w);
+    end;
+
+    Result := True;
+  finally
+    MaskJam.Free;
   end;
 end;
 
