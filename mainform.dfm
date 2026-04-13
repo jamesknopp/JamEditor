@@ -3279,6 +3279,16 @@ object FormMain: TFormMain
           TabOrder = 2
           OnClick = rcrResetClick
         end
+        object btnRenderCar: TButton
+          Left = 16
+          Top = 76
+          Width = 106
+          Height = 29
+          Hint = 'Render car sprite using ferrari.bmp, chassis.bmp and tyre texture'
+          Caption = 'Render Car'
+          TabOrder = 3
+          OnClick = btnRenderCarClick
+        end
       end
       object Button1: TButton
         Left = 24
