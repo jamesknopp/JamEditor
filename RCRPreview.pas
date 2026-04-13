@@ -42,7 +42,8 @@ type
     procedure btnRenderClick(Sender: TObject);
   private
     function  GetGameRoot: string;
-    function  GetMainJamDir: string;
+    function  GetMainJamDir: string;   // Gp3Jams\Main\  — RCR JAMs
+    function  GetLiveryDir: string;    // Gp3Jams\liveries\  — livery/chassis/tyre BMPs
     procedure PopulateGameList;
     procedure PopulateAngles;
     procedure PopulateLiveries;
@@ -79,7 +80,16 @@ end;
 
 function TRCRPreviewForm.GetMainJamDir: string;
 begin
+  // RCR sprite JAMs (rcr1a.jam – rcr5a.jam and their rcr?b masks)
   Result := IncludeTrailingPathDelimiter(GetGameRoot) + 'Gp3Jams\Main\';
+end;
+
+function TRCRPreviewForm.GetLiveryDir: string;
+begin
+  // Livery BMPs (ferrari.bmp etc.), chassis.bmp, tyre textures
+  // SW liveries: Gp3Jams\liveries\
+  // HW liveries: Gp3JamsH\liveries\  (not used here — SW render only)
+  Result := IncludeTrailingPathDelimiter(GetGameRoot) + 'Gp3Jams\liveries\';
 end;
 
 procedure TRCRPreviewForm.SetStatus(const Msg: string);
@@ -169,21 +179,24 @@ begin
   prevSel := cboLivery.Text;
   cboLivery.Items.Clear;
 
-  dir := GetMainJamDir;
+  // SW liveries live in Gp3Jams\liveries\
+  dir := GetLiveryDir;
   if not DirectoryExists(dir) then
+  begin
+    SetStatus('Livery directory not found: ' + dir);
     Exit;
+  end;
 
   files := TDirectory.GetFiles(dir, '*.bmp');
   for f in files do
   begin
     name := LowerCase(ExtractFileName(f));
-    // Exclude non-livery assets
+    // Exclude non-livery assets that may also live here
     if StartsStr('wh',      name) then Continue;  // tyres
     if StartsStr('car_srf', name) then Continue;  // UV atlas
     if StartsStr('hlm_srf', name) then Continue;  // helmet atlas
     if StartsStr('ccp_srf', name) then Continue;  // cockpit atlas
     if StartsStr('wh_srf',  name) then Continue;  // tyre atlas
-    if StartsStr('rcr',     name) then Continue;  // rcr extracted frames
     if name = 'chassis.bmp'        then Continue;
     cboLivery.Items.Add(ChangeFileExt(ExtractFileName(f), ''));
   end;
@@ -251,7 +264,7 @@ end;
 
 procedure TRCRPreviewForm.btnRenderClick(Sender: TObject);
 var
-  dir, rcrPath, liveryPath, chassisPath, tyrePath: string;
+  rcrPath, liveryPath, chassisPath, tyrePath: string;
   angleName, tyreName: string;
   RcrJam: TJamFile;
   SpriteB, SpriteA: TBitmap;
@@ -275,21 +288,20 @@ begin
     Exit;
   end;
 
-  dir        := GetMainJamDir;
   angleName  := cboAngle.Text;
-  rcrPath    := dir + angleName + '.jam';
-  liveryPath := dir + cboLivery.Text + '.bmp';
-  chassisPath:= dir + 'chassis.bmp';
+  rcrPath    := GetMainJamDir + angleName + '.jam';
+  liveryPath := GetLiveryDir  + cboLivery.Text + '.bmp';
+  chassisPath:= GetLiveryDir  + 'chassis.bmp';
 
-  // Find first available tyre texture
+  // Find first available tyre texture in livery directory
   tyrePath := '';
   TyreNames := TArray<string>.Create(
     'whbridg0.bmp','whgood0.bmp','whmich0.bmp','whpire0.bmp',
     'whstre0.bmp', 'whyoko0.bmp');
   for tyreName in TyreNames do
-    if FileExists(dir + tyreName) then
+    if FileExists(GetLiveryDir + tyreName) then
     begin
-      tyrePath := dir + tyreName;
+      tyrePath := GetLiveryDir + tyreName;
       Break;
     end;
 
@@ -306,12 +318,12 @@ begin
   end;
   if not FileExists(chassisPath) then
   begin
-    SetStatus('chassis.bmp not found in: ' + dir);
+    SetStatus('chassis.bmp not found in: ' + GetLiveryDir);
     Exit;
   end;
   if tyrePath = '' then
   begin
-    SetStatus('No tyre texture (wh*.bmp) found in: ' + dir);
+    SetStatus('No tyre texture (wh*.bmp) found in: ' + GetLiveryDir);
     Exit;
   end;
 
