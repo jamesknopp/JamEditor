@@ -64,15 +64,6 @@ implementation
 
 {$R *.dfm}
 
-const
-  // Hardcoded livery JAM names per game version
-  GP3LiveryNames: array [0..10] of string = (
-    'arrows98', 'benett98', 'ferrar98', 'jordan98', 'mclare98',
-    'minardi98', 'prost98',  'sauber98', 'stewar98', 'tyrrel98', 'willia98');
-
-  GP3_2000LiveryNames: array [0..11] of string = (
-    '1mclar00', '2mclar00', 'arrows00', 'bar00',    'benett00', 'ferrar00',
-    'jaguar00', 'jordan00', 'minardi00','prost00',   'sauber00', 'willia00');
 
 // ---------------------------------------------------------------------------
 //  Path helpers
@@ -107,8 +98,12 @@ begin
   if cboGame.ItemIndex < 0 then
     Exit(nil);
   case TGameChoice(cboGame.Items.Objects[cboGame.ItemIndex]) of
-    gcGP3:      Result := TArray<string>(GP3LiveryNames);
-    gcGP3_2000: Result := TArray<string>(GP3_2000LiveryNames);
+    gcGP3:
+      Result := ['arrows98', 'benett98', 'ferrar98', 'jordan98', 'mclare98',
+                 'minardi98', 'prost98',  'sauber98', 'stewar98', 'tyrrel98', 'willia98'];
+    gcGP3_2000:
+      Result := ['1mclar00', '2mclar00', 'arrows00', 'bar00',    'benett00', 'ferrar00',
+                 'jaguar00', 'jordan00', 'minardi00', 'prost00',  'sauber00', 'willia00'];
   else
     Result := nil;
   end;
