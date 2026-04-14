@@ -5,7 +5,7 @@ interface
 uses
   System.IOUtils, Winapi.Windows, Winapi.Messages, System.SysUtils,
   System.Generics.Collections,
-  System.Variants, System.Classes, Vcl.FileCtrl, Vcl.Dialogs, Vcl.Graphics,
+  System.Classes, Vcl.Dialogs, Vcl.Graphics,
   Vcl.Controls, Vcl.Forms, Vcl.StdCtrls, Vcl.NumberBox, Vcl.Samples.Spin,
   System.Threading, Vcl.ExtCtrls, Vcl.ComCtrls, Vcl.ToolWin,
   jamGeneral, jamPaletteDetector, jamSW, jamHW, System.types, strutils,
@@ -339,16 +339,6 @@ end;
 
 procedure TJamBatchForm.btnConvertTrackClick(Sender: TObject);
 begin
-  // if OpenTrack.Execute then
-  // begin
-  // try
-  // FDat.LoadFromFile(OpenTrack.FileName);
-  // LoadJamListToUI;
-  // except
-  // on E: Exception do
-  // MessageDlg('Failed to open file: ' + E.Message, mtError, [mbOK], 0);
-  // end;
-  // end;
 end;
 
 procedure TJamBatchForm.cbSimplifyChange(Sender: TObject);
@@ -794,7 +784,6 @@ begin
     chkDoPalette.Checked := jamItem.TextureOptions.doPals;
     chkDoMatte.Checked := jamItem.TextureOptions.doSoftenMatte;
     chkSimpPalette.Checked := jamItem.TextureOptions.doSimplePal;
-    chkDoPalette.Checked := jamItem.TextureOptions.doPals;
 
   end
   else

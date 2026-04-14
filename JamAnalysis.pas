@@ -4,7 +4,7 @@ interface
 
 uses
   Winapi.Windows, Winapi.Messages, System.SysUtils, System.StrUtils,
-  System.Variants, System.Classes, Vcl.Graphics,
+  System.Classes, Vcl.Graphics,
   Vcl.Controls, Vcl.Forms, Vcl.Dialogs, MPCommonObjects, EasyListview,
   System.Threading, System.IOUtils, System.SyncObjs,
   Vcl.ExtCtrls, JamSW, JamHW, JamPalette, JamGeneral, jamPaletteDetector,
@@ -316,7 +316,7 @@ begin
                 for k := 0 to 15 do
                 begin
                   Item.Captions[5 + k] :=
-                    inttostr(FlagToInt(UnPackFlag(Node.JamInfo.JamFlags, k)));
+                    inttostr(Ord(UnPackFlag(Node.JamInfo.JamFlags, k)));
                 end;
 
                 Item.Captions[21] := inttostr(Node.JamInfo.scaleX);
@@ -325,7 +325,7 @@ begin
                 for k := 0 to 7 do
                 begin
                   Item.Captions[24 + k] :=
-                    inttostr(FlagToInt(UnPackFlag(Node.JamInfo.scaleFlag, k)));
+                    inttostr(Ord(UnPackFlag(Node.JamInfo.scaleFlag, k)));
                 end;
 
               end;
@@ -376,7 +376,7 @@ begin
                 for k := 0 to 15 do
                 begin
                   Item.Captions[5 + k] :=
-                    inttostr(FlagToInt(UnPackFlag(Node.JamInfo.JamFlags, k)));
+                    inttostr(Ord(UnPackFlag(Node.JamInfo.JamFlags, k)));
                 end;
 
                 Item.Captions[21] := inttostr(Node.JamInfo.scaleX);
@@ -385,7 +385,7 @@ begin
                 for k := 0 to 7 do
                 begin
                   Item.Captions[24 + k] :=
-                    inttostr(FlagToInt(UnPackFlag(Node.JamInfo.scaleFlag, k)));
+                    inttostr(Ord(UnPackFlag(Node.JamInfo.scaleFlag, k)));
 
                 end;
                 Item.Captions[32] := inttostr(Node.JamInfo.Unk);

@@ -104,11 +104,6 @@ begin
       strGP32kLocation := pickedDir;
       edtGp32KLoc.text := pickedDir;
     end
-    // else
-    // if ValidateFolder(pickedDir, 'GP3_2000.exe', ['Gp3Jams','Gp3JamsH'], missing) then
-    // begin
-    // edtGP3Loc.text := pickedDir;
-    // end
     else
     begin
       ShowMessage('Invalid folder; missing:' + sLineBreak +
@@ -141,11 +136,6 @@ begin
       strGP3Location := pickedDir;
       edtGp3Loc.text := pickedDir;
     end
-    // else
-    // if ValidateFolder(pickedDir, 'GP3_2000.exe', ['Gp3Jams','Gp3JamsH'], missing) then
-    // begin
-    // edtGP3Loc.text := pickedDir;
-    // end
     else
     begin
       ShowMessage('Invalid folder; missing:' + sLineBreak +

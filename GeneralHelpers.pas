@@ -52,7 +52,6 @@ end;
 
 
 type
-  PRGBTriple = ^TRGBTriple;
   TRGBTripleArray = array[0..0] of TRGBTriple;
   PRGBTripleArray = ^TRGBTripleArray;
 

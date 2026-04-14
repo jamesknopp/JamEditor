@@ -654,18 +654,6 @@ procedure BleedEdges(var bmp: TBitmap; const matte: TBitmap;
 
 function IndexedToIndexRGB(const Src: TBitmap): TBitmap;
 
-procedure BuildBlurKernel(Radius: Integer; out Kernel: TArray<Single>);
-
-procedure BlurH(const Src, Dst: TBitmap; const Kernel: TArray<Single>; Radius: Integer);
-procedure BlurV(const Src, Dst: TBitmap; const Kernel: TArray<Single>; Radius: Integer);
-
-function FastGaussianBlur(Bitmap: TBitmap; RadiusX, RadiusY: Integer) : TBitmap;
-
-procedure BoxBlurH(const Src, Dst: TBitmap; Radius: Integer);
-procedure BoxBlurV(const Src, Dst: TBitmap; Radius: Integer);
-
-function FastBoxBlur(Bitmap: TBitmap; RadiusX, RadiusY: Integer) : TBitmap;
-
 procedure BoxBlurV_MT_SIMD(const Src, Dst: TBitmap; Radius: Integer);
 procedure BoxBlurH_MT_SIMD(const Src, Dst: TBitmap; Radius: Integer);
 
@@ -819,53 +807,23 @@ begin
   Result := RGB(C.R, C.G, C.b);
 end;
 
-function RGB565ToColor(Pixel: Word): TColor;
-var
-  r5, g6, b5: Integer;
-begin
-  // Extract components
-  r5 := (Pixel shr 11) and $1F; // top 5 bits
-  g6 := (Pixel shr 5) and $3F; // middle 6 bits
-  b5 := Pixel and $1F; // bottom 5 bits
-  // Expand to 8 bits
-  r5 := (r5 shl 3) or (r5 shr 2); // replicate high bits
-  g6 := (g6 shl 2) or (g6 shr 4);
-  b5 := (b5 shl 3) or (b5 shr 2);
-  Result := RGB(r5, g6, b5);
-end;
-
-function PackRGB565(Color: TColor): Word;
-begin
-  Result := (GetBValue(Color) shr 3) or ((GetGValue(Color) shr 2) shl 5) or
-    ((GetRValue(Color) shr 3) shl 11);
-end;
-
 function NearestPaletteEntry(matchRGB: TRGB): Byte;
 var
-  pal: array [0 .. 255] of Byte;
   i: Integer;
-  bestIndex: Word;
-  dMin, d: Double;
+  bestIndex: Integer;
+  dMin, d: Cardinal;
   dr, dg, db: Integer;
-
 begin
-  // 1) identity‐map the first PAL_MAX_CUSTOM_INDEX entries
-  FillChar(pal, SizeOf(pal), 0);
-  for i := 0 to PAL_MAX_CUSTOM_INDEX - 1 do
-    pal[i] := Byte(i);
-
-  // 2) find the palette index whose colour is closest in Euclidean RGB space
-  dMin := $7FFFFFFF;
+  dMin := High(Cardinal);
   bestIndex := 0;
 
   for i := 0 to 255 do
   begin
-    dr := Integer(matchRGB.R) - GPXPal[pal[i]].R;
-    dg := Integer(matchRGB.G) - GPXPal[pal[i]].G;
-    db := Integer(matchRGB.b) - GPXPal[pal[i]].b;
+    dr := Integer(matchRGB.R) - GPXPal[i].R;
+    dg := Integer(matchRGB.G) - GPXPal[i].G;
+    db := Integer(matchRGB.b) - GPXPal[i].b;
 
-    // Euclidean distance
-    d := Sqrt(dr * dr + dg * dg + db * db);
+    d := Cardinal(dr * dr + dg * dg + db * db);
 
     if d < dMin then
     begin
@@ -2335,24 +2293,31 @@ width, height: Integer): TBitmap;
 var
   X, Y, Idx: Integer;
   bmp: TBitmap;
+  Row: PRGBTriple;
+  Val: Byte;
 begin
   bmp := TBitmap.Create;
-  bmp.canvas.lock;
-  bmp.SetSize(width, height);
   bmp.PixelFormat := pf24bit;
+  bmp.SetSize(width, height);
 
   Idx := 0;
   for Y := 0 to height - 1 do
+  begin
+    Row := bmp.ScanLine[Y];
     for X := 0 to width - 1 do
     begin
       if values[Idx] = $01 then
-        bmp.canvas.Pixels[X, Y] := clWhite
+        Val := 255
       else
-        bmp.canvas.Pixels[X, Y] := clBlack;
+        Val := 0;
+      Row^.rgbtRed := Val;
+      Row^.rgbtGreen := Val;
+      Row^.rgbtBlue := Val;
+      Inc(Row);
       Inc(Idx);
     end;
+  end;
 
-  bmp.canvas.unlock;
   Result := bmp;
 end;
 
@@ -2433,305 +2398,6 @@ type
     B, G, R, A: Byte;
   end;
 
-procedure BuildBlurKernel(Radius: Integer; out Kernel: TArray<Single>);
-var
-  i: Integer;
-  Sigma, Sum, x: Single;
-begin
-  if Radius <= 0 then
-  begin
-    SetLength(Kernel, 1);
-    Kernel[0] := 1;
-    Exit;
-  end;
-
-  Sigma := Radius * 0.5;
-  SetLength(Kernel, Radius * 2 + 1);
-
-  Sum := 0;
-  for i := -Radius to Radius do
-  begin
-    x := i;
-    Kernel[i + Radius] := Exp(-(x * x) / (2 * Sigma * Sigma));
-    Sum := Sum + Kernel[i + Radius];
-  end;
-
-  for i := 0 to High(Kernel) do
-    Kernel[i] := Kernel[i] / Sum;
-end;
-
-procedure BlurH(const Src, Dst: TBitmap; const Kernel: TArray<Single>; Radius: Integer);
-var
-  x, y, k, xx: Integer;
-  SrcLine, DstLine: PPixel32;
-  p: PPixel32;
-  r, g, b: Single;
-begin
-  for y := 0 to Src.Height - 1 do
-  begin
-    SrcLine := Src.ScanLine[y];
-    DstLine := Dst.ScanLine[y];
-
-    for x := 0 to Src.Width - 1 do
-    begin
-      r := 0; g := 0; b := 0;
-
-      for k := -Radius to Radius do
-      begin
-        xx := x + k;
-        if xx < 0 then xx := 0 else
-        if xx >= Src.Width then xx := Src.Width - 1;
-
-        p := SrcLine;
-        Inc(p, xx);
-
-        b := b + p.B * Kernel[k + Radius];
-        g := g + p.G * Kernel[k + Radius];
-        r := r + p.R * Kernel[k + Radius];
-      end;
-
-      p := DstLine;
-      Inc(p, x);
-
-      p.B := Round(b);
-      p.G := Round(g);
-      p.R := Round(r);
-    end;
-  end;
-end;
-
-procedure BlurV(const Src, Dst: TBitmap; const Kernel: TArray<Single>; Radius: Integer);
-var
-  x, y, k, yy: Integer;
-  pSrc, pDst: PPixel32;
-  r, g, b: Single;
-begin
-  for y := 0 to Src.Height - 1 do
-  begin
-    for x := 0 to Src.Width - 1 do
-    begin
-      r := 0; g := 0; b := 0;
-
-      for k := -Radius to Radius do
-      begin
-        yy := y + k;
-        if yy < 0 then yy := 0 else
-        if yy >= Src.Height then yy := Src.Height - 1;
-
-        pSrc := Src.ScanLine[yy];
-        Inc(pSrc, x);
-
-        b := b + pSrc.B * Kernel[k + Radius];
-        g := g + pSrc.G * Kernel[k + Radius];
-        r := r + pSrc.R * Kernel[k + Radius];
-      end;
-
-      pDst := Dst.ScanLine[y];
-      Inc(pDst, x);
-
-      pDst.B := Round(b);
-      pDst.G := Round(g);
-      pDst.R := Round(r);
-    end;
-  end;
-end;
-
-function FastGaussianBlur(Bitmap: TBitmap; RadiusX, RadiusY: Integer) :TBitmap;
-var
-  Temp: TBitmap;
-  KernelX, KernelY: TArray<Single>;
-begin
-  if (RadiusX <= 0) and (RadiusY <= 0) then Exit;
-
-  Bitmap.PixelFormat := pf32bit;
-
-  Temp := TBitmap.Create;
-  try
-    Temp.Assign(Bitmap);
-    Temp.PixelFormat := pf32bit;
-
-    BuildBlurKernel(RadiusX, KernelX);
-    BuildBlurKernel(RadiusY, KernelY);
-
-    if RadiusX > 0 then
-      BlurH(Bitmap, Temp, KernelX, RadiusX)
-    else
-      Temp.Assign(Bitmap);
-
-    if RadiusY > 0 then
-      BlurV(Temp, Bitmap, KernelY, RadiusY)
-    else
-      Bitmap.Assign(Temp);
-
-  result := bitmap;
-
-  finally
-    Temp.Free;
-  end;
-end;
-
-
-procedure BoxBlurH(const Src, Dst: TBitmap; Radius: Integer);
-var
-  x, y, i, count: Integer;
-  SrcLine, DstLine: PPixel32;
-  r, g, b: Integer;
-  left, right: Integer;
-  p: PPixel32;
-begin
-  for y := 0 to Src.Height - 1 do
-  begin
-    SrcLine := Src.ScanLine[y];
-    DstLine := Dst.ScanLine[y];
-
-    r := 0; g := 0; b := 0;
-    count := 0;
-
-    // Initial window
-    for i := -Radius to Radius do
-    begin
-      x := i;
-      if x < 0 then x := 0 else
-      if x >= Src.Width then x := Src.Width - 1;
-
-      p := SrcLine;
-      Inc(p, x);
-
-      Inc(b, p.B);
-      Inc(g, p.G);
-      Inc(r, p.R);
-      Inc(count);
-    end;
-
-    for x := 0 to Src.Width - 1 do
-    begin
-      p := DstLine;
-      Inc(p, x);
-
-      p.B := b div count;
-      p.G := g div count;
-      p.R := r div count;
-
-      // Slide window
-      left := x - Radius;
-      right := x + Radius + 1;
-
-      if left < 0 then left := 0;
-      if left >= Src.Width then left := Src.Width - 1;
-
-      if right < 0 then right := 0;
-      if right >= Src.Width then right := Src.Width - 1;
-
-      // Remove left
-      p := SrcLine;
-      Inc(p, left);
-      Dec(b, p.B);
-      Dec(g, p.G);
-      Dec(r, p.R);
-
-      // Add right
-      p := SrcLine;
-      Inc(p, right);
-      Inc(b, p.B);
-      Inc(g, p.G);
-      Inc(r, p.R);
-    end;
-  end;
-end;
-
-procedure BoxBlurV(const Src, Dst: TBitmap; Radius: Integer);
-var
-  x, y, i, count: Integer;
-  r, g, b: Integer;
-  top, bottom: Integer;
-  p: PPixel32;
-begin
-  for x := 0 to Src.Width - 1 do
-  begin
-    r := 0; g := 0; b := 0;
-    count := 0;
-
-    // Initial window
-    for i := -Radius to Radius do
-    begin
-      y := i;
-      if y < 0 then y := 0 else
-      if y >= Src.Height then y := Src.Height - 1;
-
-      p := Src.ScanLine[y];
-      Inc(p, x);
-
-      Inc(b, p.B);
-      Inc(g, p.G);
-      Inc(r, p.R);
-      Inc(count);
-    end;
-
-    for y := 0 to Src.Height - 1 do
-    begin
-      p := Dst.ScanLine[y];
-      Inc(p, x);
-
-      p.B := b div count;
-      p.G := g div count;
-      p.R := r div count;
-
-      // Slide window
-      top := y - Radius;
-      bottom := y + Radius + 1;
-
-      if top < 0 then top := 0;
-      if top >= Src.Height then top := Src.Height - 1;
-
-      if bottom < 0 then bottom := 0;
-      if bottom >= Src.Height then bottom := Src.Height - 1;
-
-      // Remove top
-      p := Src.ScanLine[top];
-      Inc(p, x);
-      Dec(b, p.B);
-      Dec(g, p.G);
-      Dec(r, p.R);
-
-      // Add bottom
-      p := Src.ScanLine[bottom];
-      Inc(p, x);
-      Inc(b, p.B);
-      Inc(g, p.G);
-      Inc(r, p.R);
-    end;
-  end;
-end;
-
-function FastBoxBlur(Bitmap: TBitmap; RadiusX, RadiusY: Integer) : TBitmap;
-var
-  Temp: TBitmap;
-begin
-  if (RadiusX <= 0) and (RadiusY <= 0) then Exit;
-
-  Bitmap.PixelFormat := pf32bit;
-
-  Temp := TBitmap.Create;
-  try
-    Temp.Assign(Bitmap);
-    Temp.PixelFormat := pf32bit;
-
-    if RadiusX > 0 then
-      BoxBlurH(Bitmap, Temp, RadiusX)
-    else
-      Temp.Assign(Bitmap);
-
-    if RadiusY > 0 then
-      BoxBlurV(Temp, Bitmap, RadiusY)
-    else
-      Bitmap.Assign(Temp);
-
-      result := bitmap;
-
-  finally
-    Temp.Free;
-  end;
-end;
 {$R-}
 procedure BoxBlurH_MT_SIMD(const Src, Dst: TBitmap; Radius: Integer);
 var

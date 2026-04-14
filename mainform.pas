@@ -1591,7 +1591,7 @@ begin
                         begin
                                 if Assigned(FJamFile.FEntries[i].FTexture) then
                                 begin
-                                        freeandnil
+                                        FreeAndNil
                                         (FJamFile.FEntries[i].FTexture);
                                         FJamFile.FEntries[i].FTexture :=
                                         TBitmap.Create;
@@ -1861,10 +1861,10 @@ begin
         boolUndo := false;
 
         if Assigned(FHWJamFile) then
-                freeandnil(FHWJamFile);
+                FreeAndNil(FHWJamFile);
 
         if Assigned(FJamFile) then
-                freeandnil(FJamFile);
+                FreeAndNil(FJamFile);
 
         if boolHWJAM then
         begin
@@ -1927,13 +1927,13 @@ begin
         if Assigned(FHWJamFile) then
         begin
                 DeSelectTexture;
-                freeandnil(FHWJamFile);
+                FreeAndNil(FHWJamFile);
         end;
 
         if Assigned(FJamFile) then
         begin
                 DeSelectTexture;
-                freeandnil(FJamFile);
+                FreeAndNil(FJamFile);
         end;
 
         boolJamLoaded := false;
@@ -2324,8 +2324,8 @@ begin
                 ImageCanvas.Picture.Bitmap := scaledBMP;
 
         finally
-                freeandnil(scaledBMP);
-                freeandnil(bmp);
+                FreeAndNil(scaledBMP);
+                FreeAndNil(bmp);
         end;
 end;
 
@@ -2588,7 +2588,7 @@ begin
 
                                 if Assigned(FJamFile) then
                                 begin
-                                        freeandnil(FJamFile);
+                                        FreeAndNil(FJamFile);
                                 end;
 
                                 if Assigned(FHWJamFile) then
@@ -2683,7 +2683,7 @@ begin
                 if Assigned(FJamFile.FEntries[i].FTexture) then
                 begin
                         tmpCanvas.Assign(FJamFile.FEntries[i].FOriginalTex);
-                        freeandnil(FJamFile.FEntries[i].FTexture);
+                        FreeAndNil(FJamFile.FEntries[i].FTexture);
                         FJamFile.FEntries[i].FTexture := TBitmap.Create;
                         FJamFile.FEntries[i].FTexture :=
                           FJamFile.GenerateGPxBMP(tmpCanvas, i,
@@ -3875,8 +3875,8 @@ begin
                 ImageCanvas.Picture.Bitmap := scaledBMP;
 
         finally
-                freeandnil(scaledBMP);
-                freeandnil(bmp);
+                FreeAndNil(scaledBMP);
+                FreeAndNil(bmp);
         end;
 
 end;

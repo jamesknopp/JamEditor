@@ -100,7 +100,6 @@ begin
   if (idxGp3 >= 0) and ((idxGp2 < 0) or (idxGp3 <= idxGp2)) then
   begin
     FTailStart := idxGp3;
-    showmessage('gp3');
   end
   else if (idxGp2 >= 0) then
     FTailStart := idxGp2

@@ -200,19 +200,19 @@ begin
 
   // Free textures safely
   if assigned(FTexture) then
-    freeAndNil(FTexture);
+    FreeAndNil(FTexture);
 
   if assigned(FOriginalTex) then
-    freeAndNil(FOriginalTex);
+    FreeAndNil(FOriginalTex);
 
   for i := 0 to 3 do
     FCachedTex[i].free;
 
   if assigned(rcrA) then
-    freeAndNil(rcrA);
+    FreeAndNil(rcrA);
 
   if assigned(rcrB) then
-    freeAndNil(rcrA);
+    FreeAndNil(rcrB);
   // Clear byte array
   FRawTexture := nil;
 
@@ -336,18 +336,18 @@ begin
   end;
 
   // Read FTexture
-  freeAndNil(FTexture);
+  FreeAndNil(FTexture);
   FTexture := TBitmap.Create;
   FTexture.LoadFromStream(Stream);
 
   // Read FOriginalTex
-  freeAndNil(FOriginalTex);
+  FreeAndNil(FOriginalTex);
   FOriginalTex := TBitmap.Create;
   FOriginalTex.LoadFromStream(Stream);
 
   for i := 0 to 3 do
   begin
-    freeAndNil(FCachedTex[i]);
+    FreeAndNil(FCachedTex[i]);
     FCachedTex[i] := TBitmap.Create;
     FCachedTex[i].LoadFromStream(Stream);
   end;
@@ -403,12 +403,12 @@ begin
   if assigned(FEntries) then
   begin
     for i := 0 to FEntries.Count - 1 do
-      freeAndNil(FEntries[i]);
-    freeAndNil(FEntries);
+      FreeAndNil(FEntries[i]);
+    FreeAndNil(FEntries);
   end;
 
   // if assigned(CanvasBitmap) then
-  // freeAndNil(CanvasBitmap);
+  // FreeAndNil(CanvasBitmap);
 
   SetLength(FRawData, 0);
 
@@ -420,11 +420,11 @@ begin
   for i := 0 to 3 do
   begin
     if assigned(LevelIdx[i]) then
-      freeAndNil(LevelIdx[i]);
+      FreeAndNil(LevelIdx[i]);
   end;
 
   if assigned(originalCanvas) then
-    freeAndNil(originalCanvas);
+    FreeAndNil(originalCanvas);
 
   inherited;
 end;
@@ -875,7 +875,7 @@ begin
         FTexture := DrawSingleTexture(FRawData, Length(FRawData), i, False);
 
         if assigned(FOriginalTex) then
-          freeAndNil(FOriginalTex);
+          FreeAndNil(FOriginalTex);
         FOriginalTex := DrawPalTexture(i);
         CachePaletteBMP(i);
 
@@ -1059,11 +1059,9 @@ var
   palCount, i, X, Y, idx, dst: integer;
   LocalPal: array [0 .. 255] of Byte;
   bmp: TBitmap;
-  dstID: integer;
-  tempY, tempX, prevY: integer;
   rcrA, rcrB: integer;
-
-  rcrBMP: TBitmap;
+  rcrARow, rcrBRow: PByteArray;
+  bmpRow: PRGBTriple;
 begin
 
   W := FEntries[JamId].FInfo.Width;
@@ -1125,35 +1123,32 @@ begin
     end;
 
     for Y := 0 to H - 1 do
+    begin
+      rcrARow := FEntries[JamId].rcrA.ScanLine[Y];
+      rcrBRow := FEntries[JamId].rcrB.ScanLine[Y];
+      bmpRow := bmp.ScanLine[Y];
+
       for X := 0 to (W div 2) - 1 do
       begin
-
         idx := X0 + (X * 2) + (Y0 + Y) * srcStride;
 
         dst := LocalPal[Raw[idx]];
         rcrA := dst;
-
-        // dstID := (Y * W) + X;
-        // FEntries[JamId].FRawTexture[dstID] := Raw[idx];
-
-        FEntries[JamId].rcrA.Canvas.Pixels[X, Y] :=
-          RGB(gpxPal[dst].r, gpxPal[dst].g, gpxPal[dst].b);
+        rcrARow[X] := dst;
 
         idx := X0 + (X * 2) + 1 + (Y0 + Y) * srcStride;
 
         dst := LocalPal[Raw[idx]];
         rcrB := dst;
+        rcrBRow[X] := dst;
 
-        FEntries[JamId].rcrB.Canvas.Pixels[X, Y] :=
-          RGB(gpxPal[dst].r, gpxPal[dst].g, gpxPal[dst].b);
-
-        // dstID := (Y * W) + X+1;
-        // FEntries[JamId].FRawTexture[dstID] := Raw[idx];
-
-        bmp.Canvas.Pixels[X, Y] := RGB(rcrA, 0, rcrB);
+        bmpRow^.rgbtRed := Byte(rcrA);
+        bmpRow^.rgbtGreen := 0;
+        bmpRow^.rgbtBlue := Byte(rcrB);
+        Inc(bmpRow);
       end;
+    end;
 
-    // showMessage(format('Total image size: %d, Raw Size: %d, texture size: %d', [totalImageSize, length(raw), w*h]));
     FEntries[JamId].FRawTexture := ExtractRawTexture(Raw, X0, Y0, W, H, 512);
 
     bmp.Canvas.Unlock;
@@ -1176,11 +1171,7 @@ var
   palCount, i, X, Y, idx, dst: integer;
   LocalPal: array [0 .. 255] of Byte;
   bmp: TBitmap;
-  dstID: integer;
-  tempY, tempX, prevY: integer;
-  rcrA, rcrB: integer;
-
-  rcrBMP: TBitmap;
+  bmpRow: PByteArray;
 begin
 
   W := FEntries[JamId].FInfo.Width;
@@ -1212,9 +1203,7 @@ begin
 
   bmp := TBitmap.Create;
   try
-    bmp.Canvas.lock;
     bmp.Width := W;
-
     bmp.Height := H;
     bmp.PixelFormat := pf8bit;
     bmp.Palette := CreateGPxPal;
@@ -1222,6 +1211,8 @@ begin
     SetLength(FEntries[JamId].FRawTexture, W * H);
 
     for Y := 0 to H - 1 do
+    begin
+      bmpRow := bmp.ScanLine[Y];
       for X := 0 to W - 1 do
       begin
         idx := X0 + X + (Y0 + Y) * srcStride;
@@ -1230,15 +1221,12 @@ begin
             ('DrawSingleTexture: Raw index %d out of bounds (%d)',
             [idx, Length(Raw)]);
 
-        dstID := (Y * W) + X;
-        FEntries[JamId].FRawTexture[dstID] := Raw[idx];
+        FEntries[JamId].FRawTexture[(Y * W) + X] := Raw[idx];
 
         dst := LocalPal[Raw[idx]];
-        bmp.Canvas.Pixels[X, Y] := RGB(gpxPal[dst].r, gpxPal[dst].g,
-          gpxPal[dst].b);
+        bmpRow[X] := dst;
       end;
-
-    bmp.Canvas.Unlock;
+    end;
 
     Result := bmp;
   except
@@ -1273,7 +1261,7 @@ begin
       bmp := DrawPalTexture(JamId);
       try
         // Free any existing cache
-        freeAndNil(FEntries[JamId].FCachedTex[palIndex]);
+        FreeAndNil(FEntries[JamId].FCachedTex[palIndex]);
         // Create & assign the new one
         FEntries[JamId].FCachedTex[palIndex] := TBitmap.Create;
         FEntries[JamId].FCachedTex[palIndex].Assign(bmp);
@@ -1305,6 +1293,8 @@ var
   palCount, i, X, Y, idx, dst: integer;
   LocalPal: array [0 .. 255] of Byte;
   jamTex: TBitmap;
+  texRow: PRGBTriple;
+  rawTex: TBytes;
 begin
   Result := nil;
 
@@ -1324,7 +1314,6 @@ begin
 
   jamTex := TBitmap.Create;
   try
-    jamTex.Canvas.lock;
     jamTex.Width := W;
     jamTex.Height := H;
     jamTex.PixelFormat := pf24bit;
@@ -1338,21 +1327,27 @@ begin
     for i := 0 to palCount - 1 do
       LocalPal[i] := FEntries[JamId].FPalettes[intPaletteID][i];
 
+    rawTex := FEntries[JamId].FRawTexture;
+
     for Y := 0 to H - 1 do
+    begin
+      texRow := jamTex.ScanLine[Y];
       for X := 0 to W - 1 do
       begin
         idx := X + Y * W;
-        if idx >= Length(FEntries[JamId].FRawTexture) then
+        if idx >= Length(rawTex) then
           raise Exception.CreateFmt
             ('DrawPalTexture: Texture index %d out of bounds (%d)',
-            [idx, Length(FEntries[JamId].FRawTexture)]);
-        dst := LocalPal[FEntries[JamId].FRawTexture[idx]];
-        jamTex.Canvas.Pixels[X, Y] := RGB(gpxPal[dst].r, gpxPal[dst].g,
-          gpxPal[dst].b);
+            [idx, Length(rawTex)]);
+        dst := LocalPal[rawTex[idx]];
+        texRow^.rgbtRed := gpxPal[dst].R;
+        texRow^.rgbtGreen := gpxPal[dst].G;
+        texRow^.rgbtBlue := gpxPal[dst].b;
+        Inc(texRow);
       end;
+    end;
 
     jamTex.Palette := CreateGPxPal;
-    jamTex.Canvas.Unlock;
     Result := jamTex;
   except
     jamTex.free;
@@ -1643,7 +1638,7 @@ begin
               stretchedBmp);
           finally
             JamBMP.Canvas.Unlock;
-            freeAndNil(stretchedBmp);
+            FreeAndNil(stretchedBmp);
           end;
         end
         else
@@ -2070,7 +2065,7 @@ begin
   exportPic := TPicture.Create;
   exportPic.bitmap := FEntries[JamId].FTexture;
   exportPic.SaveToFile(textureFilename);
-  freeAndNil(exportPic);
+  FreeAndNil(exportPic);
 end;
 
 procedure TJamFile.ExportCanvas(FileName: string);
@@ -2081,7 +2076,7 @@ begin
   exportPic.bitmap := RenderJamCanvas(False);
   exportPic.SaveToFile(FileName);
 
-  freeAndNil(exportPic);
+  FreeAndNil(exportPic);
 
 end;
 
@@ -2148,7 +2143,7 @@ begin
 
   for i := 0 to 3 do
     if assigned(LevelIdx[i]) then
-      freeAndNil(LevelIdx[i]);
+      FreeAndNil(LevelIdx[i]);
 
   for i := 0 to 3 do
   begin

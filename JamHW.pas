@@ -111,20 +111,19 @@ destructor THWJamEntry.Destroy;
 begin
 
   if assigned(FOriginalTex) then
-    freeandnil(FOriginalTex);
+    FreeAndNil(FOriginalTex);
 
   if assigned(FTexture) then
-    freeandnil(FTexture);
+    FreeAndNil(FTexture);
 
   inherited;
 end;
 
 function THWJamEntry.Clone: THWJamEntry;
 begin
-  Result := THWJamEntry.Create;
+  Result := THWJamEntry.Create(Self.FInfo);
 
   // Copy simple values
-  Result.FInfo := Self.FInfo;
   Result.boolImportedBMP := Self.boolImportedBMP;
   Result.tempDimensions := Self.tempDimensions;
 
@@ -152,15 +151,14 @@ destructor THWJamFile.Destroy;
 var
   i: integer;
 begin
-  if assigned(FEntries) then
+  if Assigned(FEntries) then
   begin
     for i := 0 to FEntries.Count - 1 do
-      freeandnil(FEntries[i]);
-    freeandnil(FEntries);
+      FreeAndNil(FEntries[i]);
+    FreeAndNil(FEntries);
   end;
 
-  freeandnil(FEntries);
-  freeandnil(CanvasBitmap);
+  FreeAndNil(CanvasBitmap);
 
   inherited;
 end;
@@ -190,12 +188,12 @@ begin
   Stream.ReadBuffer(FInfo, SizeOf(FInfo));
 
   // Read FTexture
-  freeandnil(FTexture);
+  FreeAndNil(FTexture);
   FTexture := TBitmap.Create;
   FTexture.LoadFromStream(Stream);
 
   // Read FOriginalTex
-  freeandnil(FOriginalTex);
+  FreeAndNil(FOriginalTex);
   FOriginalTex := TBitmap.Create;
   FOriginalTex.LoadFromStream(Stream);
 
@@ -302,7 +300,7 @@ begin
   A[1] := Word((RawPos shr 16) and $FFFF); // high word
   A[2] := Hdr.width;
   A[3] := Hdr.height;
-  A[4] := (Word(Hdr.scaleY) shl 8) or Hdr.scaleY;
+  A[4] := (Word(Hdr.scaleY) shl 8) or Hdr.scaleX;
   A[5] := (Word(Hdr.scaleFactor) shl 8) or Hdr.scaleFlags;
   A[6] := Hdr.word6;
   A[7] := 0;
@@ -313,56 +311,6 @@ begin
     A[j] := 0;
   Move(A, Dest^, SizeOf(A));
 end;
-
-// function TJamFile.LoadFromFile(const FileName: string;
-// preview: boolean): boolean;
-// var
-// Raw, Buf: TBytes;
-// Ptr, i, BlockCount, TrueSize, palCount: integer;
-// Info: TJamEntryInfo;
-// sFilename: string;
-// c: TRGB;
-// begin
-//
-// Result := False;
-//
-// for i := 0 to FEntries.Count - 1 do
-// FEntries[i].free;
-// FEntries.Clear;
-//
-// // Initial state
-//
-// intJamMaxWidth := 0;
-// intJamMaxHeight := 0;
-//
-// sFilename := lowercase(ChangeFileExt(ExtractFileName(FileName), ''));
-//
-//
-// // Load + decrypt
-// Raw := TFile.ReadAllBytes(FileName);
-// Buf := Raw;
-// Ptr := 0;
-//
-// // Header
-// Move(Buf[Ptr], FHeader, SizeOf(FHeader));
-// Inc(Ptr, SizeOf(FHeader));
-// if FHeader.NumItems = 0 then
-// FHeader.NumItems := 1;
-//
-// for i := 0 to FHeader.NumItems - 1 do
-// begin
-// Move(Buf[Ptr], Info, SizeOf(Info));
-// Inc(Ptr, SizeOf(Info));
-// FEntries.Add(THWRawJamEntry.Create(Info));
-// end;
-//
-// JamFileName := sFilename;
-// JamFullPath := FileName;
-//
-//
-//
-// Result := True;
-// end;
 
 function THWJamFile.LoadFromFile(const FileName: string): boolean;
 type
@@ -380,13 +328,7 @@ var
   sFilename: string;
   ScanPtr: PRGBTriple;
   c: Word;
-
-  RawBytes, BufBytes: TBytes;
-
 begin
-
-  intjamMaxWidth := 256;
-
   sFilename := lowercase(ChangeFileExt(ExtractFileName(FileName), ''));
 
   JamFileName := sFilename;
@@ -481,7 +423,7 @@ begin
         FInfo.jamFlags := A^[10];
 
         for j := 0 to 15 do
-          FInfo.FrameFlags[j] := (FInfo.jamFlags and (1 shl i)) <> 0;
+          FInfo.FrameFlags[j] := (FInfo.jamFlags and (1 shl j)) <> 0;
 
         FInfo.word11 := A^[11];
         FInfo.word11a := A^[11] and $00FF;
@@ -492,15 +434,15 @@ begin
         FInfo.word12b := (A^[12] shr 8) and $00FF;
 
         FInfo.word13 := A^[13];
-        FInfo.word13 := A^[13] and $00FF;
-        FInfo.word13 := (A^[13] shr 8) and $00FF;
+        FInfo.word13a := A^[13] and $00FF;
+        FInfo.word13b := (A^[13] shr 8) and $00FF;
 
         FInfo.word14 := A^[14];
         FInfo.word14a := A^[14] and $00FF;
-        FInfo.word14 := (A^[14] shr 8) and $00FF;
+        FInfo.word14b := (A^[14] shr 8) and $00FF;
 
         FInfo.word15 := A^[15];
-        FInfo.word15 := A^[15] and $00FF;
+        FInfo.word15a := A^[15] and $00FF;
         FInfo.word15b := (A^[15] shr 8) and $00FF;
 
         FInfo.word16 := A^[16];
@@ -508,27 +450,6 @@ begin
         FInfo.word16b := (A^[16] shr 8) and $00FF;
       end;
     end;
-
-    // Load + decrypt
-    RawBytes := TFile.ReadAllBytes(FileName);
-    BufBytes := RawBytes;
-    // Ptr := 0;
-    // Inc(Ptr, SizeOf(JAM_HW_MAGIC));
-
-    // Header
-    // Move(BufBytes[Ptr], FHeader, SizeOf(FHeader));
-    // Inc(Ptr, SizeOf(FHeader));
-    // if FHeader.NumItems = 0 then
-    // FHeader.NumItems := 1;
-    //
-    // for i := 0 to FHeader.NumItems - 1 do
-    // begin
-    // Move(BufBytes[Ptr], HWInfo, 20);
-    // Inc(Ptr, 20);
-    // FEntries[i].FRawInfo := HWInfo;
-    //
-    // showmessage(Format('Width: %d, Height %d, Scale X %d, Scale Y %d, scaleFlags %d, scaleFactor %d, JAM ID %d, JamFlags %d',[FEntries[i].FRawInfo.Width, FEntries[i].FRawInfo.height, FEntries[i].FRawInfo.scaleX, FEntries[i].FRawInfo.scaleY, FEntries[i].FRawInfo.scaleFlag, FEntries[i].FRawInfo.scaleFactor, FEntries[i].FRawInfo.JamId, FEntries[i].FRawInfo.JamFlags]));
-    // end;
 
     intJamMaxHeight := FHeader.JamTotalHeight;
 
@@ -658,6 +579,7 @@ var
   v: Cardinal;
   w: Word;
   tmpTex: TBitmap;
+  ScanPtr: PRGBTriple;
 begin
 
   hdrCount := FHeader.NumItems;
@@ -685,14 +607,20 @@ begin
 
   end;
 
-  // 3) pack pixel data into raw[hdrCount*16..]
+  // 3) pack pixel data into raw[hdrCount*16..] using ScanLine
+  CanvasBitmap.PixelFormat := pf24bit;
   offset := hdrCount * 16;
   for row := 0 to heightVal - 1 do
+  begin
+    ScanPtr := CanvasBitmap.ScanLine[row];
     for col := 0 to 256 - 1 do
     begin
-      raw[offset] := PackRGB565(CanvasBitmap.Canvas.Pixels[col, row]);
+      raw[offset] := PackRGB565(RGB(ScanPtr^.rgbtRed, ScanPtr^.rgbtGreen,
+        ScanPtr^.rgbtBlue));
+      Inc(ScanPtr);
       Inc(offset);
     end;
+  end;
 
   CanvasBitmap.Canvas.Unlock;
   // 3) write to disk: magic, counts, then RLE data
@@ -718,64 +646,64 @@ procedure THWJamFile.ImportCanvas(FileName: string);
 var
   i: integer;
   bmp: TBitmap;
-
 begin
-
   bmp := TBitmap.Create;
+  try
+    bmp.LoadFromFile(FileName);
 
-  bmp.LoadFromFile(FileName);
+    if (bmp.Height = canvasHeight) and (bmp.Width = canvasWidth) then
+    begin
+      FreeAndNil(CanvasBitmap);
+      CanvasBitmap := TBitmap.Create;
+      CanvasBitmap.Assign(bmp);
 
-  if (bmp.height = canvasHeight) and (bmp.width = canvasWidth) then
-  begin
-
-    CanvasBitmap := bmp;
-
-    for i := 0 to FHeader.NumItems - 1 do
-      DrawSingleTexture(i);
-
-  end
-  else
-  begin
-    ShowMessage
-      (Format('Bitmap file size incorrect - it should match the size of the JAM file. Bitmap is %d x %d and JAM is %d x %d',
-      [bmp.width, bmp.height, canvasWidth, canvasHeight]));
-    Exit;
+      for i := 0 to FHeader.NumItems - 1 do
+        DrawSingleTexture(i);
+    end
+    else
+    begin
+      ShowMessage
+        (Format('Bitmap file size incorrect - it should match the size of the JAM file. Bitmap is %d x %d and JAM is %d x %d',
+        [bmp.Width, bmp.Height, canvasWidth, canvasHeight]));
+    end;
+  finally
+    bmp.Free;
   end;
-
-  bmp.free;
 end;
 
 procedure THWJamFile.ImportTexture(JamId: integer; textureFilename: string);
 var
   srcPic: TPicture;
   textureWidth, textureHeight: integer;
-  tmpCanvas: TBitmap;
+  tmpCanvas, stretched: TBitmap;
 begin
-
   srcPic := TPicture.Create;
-  textureWidth := FEntries[JamId].Info.width;
-  textureHeight := FEntries[JamId].Info.height;
-
+  tmpCanvas := TBitmap.Create;
   try
-    tmpCanvas.Canvas.lock;
-    tmpCanvas := TBitmap.Create;
-    tmpCanvas.PixelFormat := srcPic.bitmap.PixelFormat;
-    srcPic.LoadFromFile(textureFilename);
-    // auto‐detects BMP, JPEG, PNG, etc.
+    textureWidth := FEntries[JamId].Info.width;
+    textureHeight := FEntries[JamId].Info.height;
 
+    srcPic.LoadFromFile(textureFilename);
+
+    tmpCanvas.PixelFormat := srcPic.bitmap.PixelFormat;
     tmpCanvas.SetSize(textureWidth, textureHeight);
 
-    tmpCanvas.Canvas.stretchdraw(Rect(0, 0, textureWidth, textureHeight),
-      stretchF(srcPic.bitmap, textureWidth, textureHeight));
+    stretched := stretchF(srcPic.bitmap, textureWidth, textureHeight);
+    try
+      tmpCanvas.Canvas.Lock;
+      tmpCanvas.Canvas.StretchDraw(Rect(0, 0, textureWidth, textureHeight),
+        stretched);
+      tmpCanvas.Canvas.Unlock;
+    finally
+      stretched.Free;
+    end;
 
     FEntries[JamId].FOriginalTex.Assign(tmpCanvas);
-    FEntries[JamId].FTexture.Assign(tmpCanvas); // Rebuild and store texture
-
-    tmpCanvas.Canvas.Unlock;
+    FEntries[JamId].FTexture.Assign(tmpCanvas);
   finally
-    srcPic.free;
+    tmpCanvas.Free;
+    srcPic.Free;
   end;
-
 end;
 
 procedure THWJamFile.ExportTexture(JamId: integer; textureFilename: string);
@@ -967,12 +895,11 @@ var
   Info: THWJamEntryInfo;
   newTex: THWJamEntry;
   x: integer;
-  tmpCanvas, scaledCanvas: TBitmap;
+  tmpCanvas, replaced: TBitmap;
   transbool: boolean;
 begin
   tmpCanvas := TBitmap.Create;
   tmpCanvas.Assign(bmp);
-  scaledCanvas := nil;
   try
 
     Info.x := newinfo.x;
@@ -986,7 +913,9 @@ begin
     newTex.FOriginalTex := TBitmap.Create;
     newTex.FTexture := TBitmap.Create;
 
-    tmpCanvas := ReplaceTransparentColour(tmpCanvas, TCol_TransGP3HW);
+    replaced := ReplaceTransparentColour(tmpCanvas, TCol_TransGP3HW);
+    tmpCanvas.Free;
+    tmpCanvas := replaced;
 
     tmpCanvas.PixelFormat := pf24bit;
 
@@ -1002,6 +931,8 @@ begin
     x := FEntries.Count - 1;
     intSelectedTexture := x;
 
+    transbool := DetectTransCol(newTex.FTexture);
+
     if not isPowerOfTwo(FEntries[x].FTexture.width) then
       FEntries[x].FInfo.jamFlags := PackFlag(FEntries[x].FInfo.jamFlags, 9);
 
@@ -1011,9 +942,10 @@ begin
     if transbool then
       FEntries[x].FInfo.jamFlags := PackFlag(FEntries[x].FInfo.jamFlags, 3);
 
+    Result := x;
+
   finally
-    tmpCanvas.free;
-    scaledCanvas.free;
+    tmpCanvas.Free;
   end;
 end;
 

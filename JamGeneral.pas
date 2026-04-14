@@ -142,32 +142,6 @@ var
     'wh_srf'
   );
 
-  // rcrJAMList: array [0 .. 22] of string = (
-  // 'rcr1a',
-  // 'rcr1b',
-  // 'rcr2a',
-  // 'rcr2b',
-  // 'rcr3a',
-  // 'rcr3b',
-  // 'rcr4a',
-  // 'rcr4b',
-  // 'rcr5a',
-  // 'rcr5b',
-  // 'chwheel1',
-  // 'rcr1',
-  // 'rcr2',
-  // 'rcr3',
-  // 'rcr4',
-  // 'rcr5',
-  // 'mhill',
-  // 'SHILL',
-  // 'Car_srf',
-  // 'Hlm_srf',
-  // 'Vcp_srf',
-  // 'vcp_srf2',
-  // 'wh_srf'
-  // );
-
   intJamMaxWidth: Integer;
   intJamMaxHeight: Integer;
 
@@ -196,7 +170,7 @@ var
 
   intJamZoom: double;
 
-  booldrawOutlines: Boolean;
+  boolDrawOutlines: Boolean;
 
   intSelectedTexture: Integer;
   boolTexSelected: Boolean;
@@ -249,8 +223,6 @@ function isHWJAM(const Filename: string): Boolean;
 
 function UnPackFlag(data: Word; flagNum: Integer): Boolean overload;
 
-function FlagToInt(bool: Boolean): Integer;
-
 function PackFlag(data: Word; flagNum: Integer): Word;
 
 function ToggleGP3JamsFolder(const APath: string): string;
@@ -280,7 +252,7 @@ var
   drawColour: TColor;
   selectColour: TColor;
 begin
-  if not booldrawOutlines then
+  if not boolDrawOutlines then
     exit(jamCanvas);
 
   if boolRcrJam then
@@ -365,12 +337,6 @@ begin
 end;
 
 function CreateTransparencyMatte(const Bmp: TBitmap): TBitmap;
-const
-  TransparentColors: array [0 .. 2] of TColor = (TCol_TransGP2,
-    // : TColor = $007FAB97; // RGB(151,171,127)
-    TCol_TransGP3, // : TColor = $0067673F; // RGB(63,103,103)
-    TCol_TransGP3HW // TColor = $00F8FC00; // RGB(0,252,248);
-    );
 var
   X, Y: Integer;
   srcLine: PRGBTriple;
@@ -413,9 +379,6 @@ begin
 end;
 
 function DetectTransCol(Bmp: TBitmap): Boolean;
-const
-  TransparentColors: array [0 .. 2] of TColor = (TCol_TransGP2, TCol_TransGP3,
-    TCol_TransGP3HW);
 var
   X, Y, i: Integer;
   px: PRGBTriple;
@@ -455,9 +418,6 @@ end;
 
 function ReplaceTransparentColour(const Bmp: TBitmap;
   const ReplacementColor: TColor): TBitmap;
-const
-  TransparentColors: array [0 .. 2] of TColor = (TCol_TransGP2, TCol_TransGP3,
-    TCol_TransGP3HW);
 var
   X, Y, i: Integer;
   pxSrc, pxDst: PRGBTriple;
@@ -521,7 +481,6 @@ begin
   boolRcrJam := False;
   for i := Low(rcrJAMList) to High(rcrJAMList) do
   begin
-    // ShowMessage('Input: ' + filename + ' listed item: ' + rcrJamList[i]);
     if Filename = lowercase(rcrJAMList[i]) then
     begin
       Result := 1;
@@ -577,14 +536,6 @@ begin
   Result := (data and (1 shl flagNum)) <> 0;
 end;
 
-function FlagToInt(bool: Boolean): Integer;
-begin
-  if bool then
-    Result := 1
-  else
-    Result := 0;
-end;
-
 function PackFlag(data: Word; flagNum: Integer): Word;
 begin
   Result := data or (1 shl flagNum);
@@ -624,21 +575,11 @@ begin
   else
     StartX := 0;
 
-  // Compute how many columns we'll pull out:
-  // even (StartX=0): (W+1) div 2
-  // odd  (StartX=1): W div 2
-  // if ReadOdd then
-  // NewWidth := Source.Width div 2
-  // else
-  // NewWidth := (Source.Width + 1) div 2;
-
   // Create result bitmap
   Result := TBitmap.Create;
   Result.PixelFormat := pf8bit;
   Result.Width := Source.Width;
   Result.Height := JamHeight;
-
-  // showMessage(inttostr(result.height));
 
   // Copy palette so the byte values map the same colours
   Result.Palette := CopyPalette(Source.Palette);
@@ -653,26 +594,10 @@ begin
     while SrcX < Source.Width do
     begin
       dstLine[DstX] := srcLine[SrcX];
-      // dstLine[DstX + 1] := srcLine[SrcX];
       Inc(DstX);
       Inc(SrcX, 2);
     end;
   end;
-
-  // for Y := 0 to Source.Height  - 1 do
-  // begin
-  // srcLine := Source.ScanLine[Y];
-  // dstLine := Result.ScanLine[Y+(jamheight div 2)];
-  // DstX := 0;
-  // SrcX := 1;
-  // while SrcX < Source.Width do
-  // begin
-  // dstLine[DstX] := srcLine[SrcX];
-  // //     dstLine[DstX + 1] := srcLine[SrcX];
-  // Inc(DstX);
-  // Inc(SrcX, 2);
-  // end;
-  // end;
 end;
 
 function RectsOverlap(const A, B: TJamRect): Boolean;
@@ -720,9 +645,8 @@ var
   Score, BestScore: Integer;
   Placed: Boolean;
   RemainingWidth: Integer;
-  TailCount: Integer;
 begin
-  // 🔥 Sort by height DESC, width DESC
+  // Sort by height DESC, width DESC
   TArray.Sort<TJamRect>(Rects, TComparer<TJamRect>.Construct(
     function(const A, B: TJamRect): Integer
     begin
@@ -890,11 +814,11 @@ begin
     end;
 
     // =====================================================
-    // 🔥 FINAL HEIGHT
+    // Final height
     // =====================================================
-    CanvasHeight := 0;
+    Result := 0;
     for i := 0 to Rows.Count - 1 do
-      Result := Max(CanvasHeight, Rows[i].Y + Rows[i].Height);
+      Result := Max(Result, Rows[i].Y + Rows[i].Height);
 
   finally
     Rows.Free;
