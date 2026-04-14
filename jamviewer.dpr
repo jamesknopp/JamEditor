@@ -20,7 +20,9 @@ uses
   GP3Track in 'GP3Track.pas',
   Vcl.Themes,
   Vcl.Styles,
-  about in 'about.pas' {aboutForm};
+  about in 'about.pas' {aboutForm},
+  RCRRender in 'RCRRender.pas',
+  RCRPreview in 'RCRPreview.pas' {RCRPreviewForm};
 
 {$R *.res}
 
@@ -36,6 +38,7 @@ begin
   Application.CreateForm(TfrmScalingFlags, frmScalingFlags);
   Application.CreateForm(TfrmJamAnalysis, frmJamAnalysis);
   Application.CreateForm(TaboutForm, aboutForm);
+  Application.CreateForm(TRCRPreviewForm, RCRPreviewForm);
   Application.Run;
 
 end.

@@ -2779,7 +2779,9 @@ end;
 function TJamFile.LoadRCRMask(const MaskPath: string): boolean;
 var
   MaskJam: TJamFile;
-  x, y, w, h: integer;
+  i, y, w, h: integer;
+  entryX, entryY, entryW, entryH, ex, ey, canvasX, canvasY: integer;
+  canvasData: TBytes;
   pRow: PByte;
   savedRcrJam: boolean;
 begin
@@ -2805,21 +2807,53 @@ begin
     w := MaskJam.canvasWidth;
     h := MaskJam.canvasHeight;
 
+    // Assemble the full-canvas mask from each entry's FRawTexture.
+    // FRawTexture is populated by DrawSingleTexture during LoadFromFile and
+    // contains the raw palette indices (0-11) for that entry in local (W x H)
+    // coordinates. This avoids assumptions about FRawData stride/layout and
+    // correctly handles entries at any (X, Y) canvas offset.
+    SetLength(canvasData, w * h);
+    FillChar(canvasData[0], w * h, 0);
+
+    for i := 0 to MaskJam.FEntries.Count - 1 do
+    begin
+      entryX := MaskJam.FEntries[i].FInfo.X;
+      entryY := MaskJam.FEntries[i].FInfo.Y;
+      entryW := MaskJam.FEntries[i].FInfo.Width;
+      entryH := MaskJam.FEntries[i].FInfo.Height;
+
+      if Length(MaskJam.FEntries[i].FRawTexture) < entryW * entryH then
+        Continue;
+
+      for ey := 0 to entryH - 1 do
+      begin
+        canvasY := entryY + ey;
+        if (canvasY < 0) or (canvasY >= h) then
+          Continue;
+        for ex := 0 to entryW - 1 do
+        begin
+          canvasX := entryX + ex;
+          if (canvasX < 0) or (canvasX >= w) then
+            Continue;
+          canvasData[canvasY * w + canvasX] :=
+            MaskJam.FEntries[i].FRawTexture[ey * entryW + ex];
+        end;
+      end;
+    end;
+
     if Assigned(rcrMask) then
       FreeAndNil(rcrMask);
 
     rcrMask := TBitmap.Create;
+    rcrMask.PixelFormat := pf8bit;
     rcrMask.Width       := w;
     rcrMask.Height      := h;
-    rcrMask.PixelFormat := pf8bit;
     rcrMask.Palette     := CreateGPxPal;
 
-    // Copy raw canvas data directly as index bytes
-    // MaskJam.FRawData is canvasWidth * canvasHeight bytes (256 * height)
     for y := 0 to h - 1 do
     begin
       pRow := rcrMask.ScanLine[y];
-      Move(MaskJam.FRawData[y * w], pRow^, w);
+      Move(canvasData[y * w], pRow^, w);
     end;
 
     Result := True;

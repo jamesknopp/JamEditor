@@ -137,8 +137,8 @@ var
     'SHILL',
     'car_srf',
     'hlm_srf',
-    'ccp_srf',
-    'ccp_srf2',
+    'vcp_srf',
+    'vcp_srf2',
     'wh_srf'
   );
 

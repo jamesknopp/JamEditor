@@ -33,7 +33,8 @@ unit RCRRender;
 interface
 
 uses
-  System.Math, Winapi.Windows, JamGeneral, Vcl.Graphics;
+  System.Math, Winapi.Windows, JamGeneral, Vcl.Graphics,  System.SysUtils, System.Types, System.Generics.Collections,
+  System.IOUtils, System.StrUtils;
 
 // Simple single-texture RCR render (tyres, etc.)
 // SpriteB    : B plane of the RCR sprite (U coordinates), pf8bit

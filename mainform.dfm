@@ -2590,7 +2590,6 @@ object FormMain: TFormMain
     Top = 34
     Width = 362
     Height = 736
-    VertScrollBar.Position = 513
     VertScrollBar.Tracking = True
     Align = alRight
     DoubleBuffered = False
@@ -2610,7 +2609,7 @@ object FormMain: TFormMain
     TabOrder = 4
     StyleName = 'Windows'
     object panel_JAMCanvas: TCategoryPanel
-      Top = 732
+      Top = 1245
       Height = 73
       Caption = 'JAM Canvas'
       DoubleBuffered = False
@@ -2660,7 +2659,7 @@ object FormMain: TFormMain
       end
     end
     object panel_PalEdit: TCategoryPanel
-      Top = 457
+      Top = 970
       Height = 275
       Caption = 'GP2/GP3 SW Palette Creation'
       DoubleBuffered = False
@@ -2875,7 +2874,7 @@ object FormMain: TFormMain
       end
     end
     object panel_ScaleParameters: TCategoryPanel
-      Top = 225
+      Top = 738
       Height = 232
       Caption = 'Scaling Parameters'
       DoubleBuffered = False
@@ -2985,7 +2984,7 @@ object FormMain: TFormMain
       end
     end
     object panel_TexFlags: TCategoryPanel
-      Top = 57
+      Top = 570
       Height = 168
       Caption = 'Texture Flags'
       DoubleBuffered = False
@@ -3037,7 +3036,7 @@ object FormMain: TFormMain
       end
     end
     object Panel_TexProperties: TCategoryPanel
-      Top = -79
+      Top = 434
       Height = 136
       Caption = 'Texture Properties'
       DoubleBuffered = False
@@ -3165,7 +3164,7 @@ object FormMain: TFormMain
       end
     end
     object panel_TexturePreview: TCategoryPanel
-      Top = -360
+      Top = 153
       Height = 281
       Caption = 'Texture Preview && Palette'
       DoubleBuffered = False
@@ -3221,13 +3220,12 @@ object FormMain: TFormMain
       end
     end
     object panel_RCRControls: TCategoryPanel
-      Top = -513
+      Top = 0
       Height = 153
       Caption = 'RCR Controls'
       DoubleBuffered = False
       ParentDoubleBuffered = False
       TabOrder = 6
-      Visible = False
       StyleName = 'Windows'
       OnCollapse = panel_RCRControlsCollapse
       OnExpand = panel_RCRControlsExpand
@@ -3284,15 +3282,17 @@ object FormMain: TFormMain
           Top = 76
           Width = 106
           Height = 29
-          Hint = 'Render car sprite using ferrari.bmp, chassis.bmp and tyre texture'
+          Hint = 
+            'Render car sprite using ferrari.bmp, chassis.bmp and tyre textur' +
+            'e'
           Caption = 'Render Car'
           TabOrder = 3
           OnClick = btnRenderCarClick
         end
       end
       object Button1: TButton
-        Left = 24
-        Top = 76
+        Left = 64
+        Top = 66
         Width = 75
         Height = 25
         Caption = 'Greyscale Tex'
@@ -3300,8 +3300,8 @@ object FormMain: TFormMain
         OnClick = Button1Click
       end
       object Button2: TButton
-        Left = 113
-        Top = 76
+        Left = 145
+        Top = 60
         Width = 96
         Height = 25
         Caption = 'Re Gen RCR'

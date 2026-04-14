@@ -21,7 +21,7 @@ uses
   System.SysUtils, System.IOUtils, System.Types, System.StrUtils,
   Vcl.Controls, Vcl.Forms, Vcl.Dialogs,
   Vcl.StdCtrls, Vcl.ExtCtrls,
-  JamGeneral, JamSW, RCRRender, Vcl.Graphics;
+  JamGeneral, JamPalette, JamSW, RCRRender, Vcl.Graphics;
 
 type
   TGameChoice = (gcGP3, gcGP3_2000);
@@ -119,9 +119,16 @@ end;
 //  Load the rendered canvas from a JAM file as a TBitmap.
 //  Caller owns the returned bitmap.  Returns nil if load fails.
 // ---------------------------------------------------------------------------
+// Loads a standard SW JAM and renders it directly to a pf24bit bitmap by
+// applying each entry's local palette and the global gpxPal.  This avoids
+// the VCL pf8bit->pf8bit Canvas.Draw palette-mapping issues that occur with
+// RenderJamCanvas when palette indices get silently remapped.
 function TRCRPreviewForm.LoadJamCanvas(const Path: string): TBitmap;
 var
   Jam: TJamFile;
+  i, x, y, X0, Y0, W, H, srcIdx, palCount, dst: integer;
+  LocalPal: array [0..255] of Byte;
+  pRow: PRGBTriple;
 begin
   Result := nil;
   if not FileExists(Path) then
@@ -132,11 +139,53 @@ begin
     Jam.SetGpxPal(boolGP2Jam);
     if not Jam.LoadFromFile(Path, False) then
       Exit;
-    if not Assigned(Jam.originalCanvas) then
-      Exit;
 
     Result := TBitmap.Create;
-    Result.Assign(Jam.originalCanvas);
+    try
+      Result.PixelFormat := pf24bit;
+      Result.Width  := 256;
+      Result.Height := Jam.FHeader.JamTotalHeight;
+      // Fill background with gpxPal[0]
+      Result.Canvas.Brush.Color := RGB(gpxPal[0].r, gpxPal[0].g, gpxPal[0].b);
+      Result.Canvas.FillRect(Rect(0, 0, Result.Width, Result.Height));
+
+      for i := 0 to Jam.FEntries.Count - 1 do
+      begin
+        X0 := Jam.FEntries[i].FInfo.X;
+        Y0 := Jam.FEntries[i].FInfo.Y;
+        W  := Jam.FEntries[i].FInfo.Width;
+        H  := Jam.FEntries[i].FInfo.Height;
+
+        // Build local palette (identity by default, then override with entry palette)
+        for var p := 0 to 255 do LocalPal[p] := p;
+        palCount := Jam.FEntries[i].FInfo.PaletteSizeDiv4;
+        if palCount > 256 then palCount := 256;
+        for var p := 0 to palCount - 1 do
+          LocalPal[p] := Jam.FEntries[i].FPalettes[intPaletteID][p];
+
+        for y := 0 to H - 1 do
+        begin
+          if Y0 + y >= Jam.FHeader.JamTotalHeight then Break;
+          pRow := PRGBTriple(PByte(Result.ScanLine[Y0 + y]) + X0 * SizeOf(TRGBTriple));
+          for x := 0 to W - 1 do
+          begin
+            srcIdx := (Y0 + y) * 256 + X0 + x;
+            if srcIdx < Length(Jam.FRawData) then
+            begin
+              dst := LocalPal[Jam.FRawData[srcIdx]];
+              pRow^.rgbtRed   := gpxPal[dst].r;
+              pRow^.rgbtGreen := gpxPal[dst].g;
+              pRow^.rgbtBlue  := gpxPal[dst].b;
+            end;
+            Inc(pRow);
+          end;
+        end;
+      end;
+
+    except
+      FreeAndNil(Result);
+      raise;
+    end;
   finally
     Jam.Free;
   end;
