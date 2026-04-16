@@ -2121,6 +2121,7 @@ object FormMain: TFormMain
   OnCreate = FormCreate
   OnDestroy = FormDestroy
   OnKeyDown = FormKeyDown
+  OnKeyUp = FormKeyUp
   OnMouseWheel = FormMouseWheel
   TextHeight = 13
   object Splitter1: TSplitter
@@ -2157,7 +2158,9 @@ object FormMain: TFormMain
       Height = 512
       PopupMenu = canvasPopupMenu
       Proportional = True
+      OnDblClick = ImageCanvasDblClick
       OnMouseDown = ImageCanvasMouseDown
+      OnMouseMove = ImageCanvasMouseMove
       OnMouseUp = ImageCanvasMouseUp
     end
   end
@@ -2417,16 +2420,26 @@ object FormMain: TFormMain
       ImageName = 'import'
       Style = tbsSeparator
     end
-    object ToolButton3: TToolButton
+    object toolbarMove: TToolButton
       Left = 391
       Top = 0
       Hint = 'Texture transformation tool'
-      Caption = 'ToolButton3'
+      Caption = 'toolbarMove'
       ImageIndex = 26
       ImageName = 'scalingInfo'
+      Style = tbsCheck
+      OnClick = toolbarMoveClick
+    end
+    object toolbarSnap: TToolButton
+      Left = 418
+      Top = 0
+      Hint = 'Snap textures to edges'
+      Caption = 'Snap'
+      Style = tbsCheck
+      OnClick = toolbarSnapClick
     end
     object ToolButton8: TToolButton
-      Left = 418
+      Left = 451
       Top = 0
       Width = 8
       Caption = 'ToolButton8'
@@ -2590,7 +2603,6 @@ object FormMain: TFormMain
     Top = 34
     Width = 362
     Height = 736
-    VertScrollBar.Position = 513
     VertScrollBar.Tracking = True
     Align = alRight
     DoubleBuffered = False
@@ -2610,7 +2622,7 @@ object FormMain: TFormMain
     TabOrder = 4
     StyleName = 'Windows'
     object panel_JAMCanvas: TCategoryPanel
-      Top = 732
+      Top = 1245
       Height = 73
       Caption = 'JAM Canvas'
       DoubleBuffered = False
@@ -2660,7 +2672,7 @@ object FormMain: TFormMain
       end
     end
     object panel_PalEdit: TCategoryPanel
-      Top = 457
+      Top = 970
       Height = 275
       Caption = 'GP2/GP3 SW Palette Creation'
       DoubleBuffered = False
@@ -2875,7 +2887,7 @@ object FormMain: TFormMain
       end
     end
     object panel_ScaleParameters: TCategoryPanel
-      Top = 225
+      Top = 738
       Height = 232
       Caption = 'Scaling Parameters'
       DoubleBuffered = False
@@ -2985,7 +2997,7 @@ object FormMain: TFormMain
       end
     end
     object panel_TexFlags: TCategoryPanel
-      Top = 57
+      Top = 570
       Height = 168
       Caption = 'Texture Flags'
       DoubleBuffered = False
@@ -3037,7 +3049,7 @@ object FormMain: TFormMain
       end
     end
     object Panel_TexProperties: TCategoryPanel
-      Top = -79
+      Top = 434
       Height = 136
       Caption = 'Texture Properties'
       DoubleBuffered = False
@@ -3165,7 +3177,7 @@ object FormMain: TFormMain
       end
     end
     object panel_TexturePreview: TCategoryPanel
-      Top = -360
+      Top = 153
       Height = 281
       Caption = 'Texture Preview && Palette'
       DoubleBuffered = False
@@ -3221,7 +3233,7 @@ object FormMain: TFormMain
       end
     end
     object panel_RCRControls: TCategoryPanel
-      Top = -513
+      Top = 0
       Height = 153
       Caption = 'RCR Controls'
       DoubleBuffered = False
@@ -3536,6 +3548,11 @@ object FormMain: TFormMain
         Enabled = False
         Hint = 'Draw texture outlines & ID'
         OnClick = menuDrawOutlinesClick
+      end
+      object menuSnap: TMenuItem
+        Caption = 'Snap to Edges'
+        Hint = 'Snap textures to edges when moving/scaling'
+        OnClick = menuSnapClick
       end
       object N13: TMenuItem
         Caption = '-'
@@ -46291,5 +46308,12 @@ object FormMain: TFormMain
     OnTimer = undoTimerTimer
     Left = 664
     Top = 250
+  end
+  object timerZoom: TTimer
+    Enabled = False
+    Interval = 16
+    OnTimer = timerZoomTimer
+    Left = 664
+    Top = 300
   end
 end

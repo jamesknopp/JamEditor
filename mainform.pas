@@ -35,6 +35,14 @@ type
         TResizeMode = (rmNone, rmMove, rmTopLeft, rmTop, rmTopRight, rmRight,
           rmBottomRight, rmBottom, rmBottomLeft, rmLeft);
 
+        TDragState = record
+                Active: Boolean;
+                Mode: TResizeMode;
+                StartX, StartY, StartW, StartH: Integer;
+                StartMouseX, StartMouseY: Integer;
+                AspectRatio: Double;
+        end;
+
         PJamTreeNode = ^TJamTreeNode;
 
         TFormMain = class(TForm)
@@ -121,15 +129,17 @@ type
                 ResetZoom1: TMenuItem;
                 N13: TMenuItem;
                 menuDrawOutlines: TMenuItem;
+                menuSnap: TMenuItem;
                 treeimagecollection: TImageCollection;
                 treeimagelist: TVirtualImageList;
                 toolbar_drawOutlines: TToolButton;
+                toolbarSnap: TToolButton;
                 ToolButton5: TToolButton;
                 toolbarZoomIN: TToolButton;
                 ToolButton6: TToolButton;
                 toolbarZoomOUT: TToolButton;
                 toolbarZoomReset: TToolButton;
-                ToolButton3: TToolButton;
+    toolbarMove: TToolButton;
                 ToolButton8: TToolButton;
                 N14: TMenuItem;
                 Undo1: TMenuItem;
@@ -205,6 +215,7 @@ type
                 N18: TMenuItem;
                 autoPackTexs: TMenuItem;
                 undoTimer: TTimer;
+                timerZoom: TTimer;
                 Button1: TButton;
                 Button2: TButton;
                 procedure JamTreeChange(Sender: TObject; Node: TTreeNode);
@@ -269,6 +280,13 @@ type
                 procedure btnRegenAllPalsClick(Sender: TObject);
                 procedure Exit1Click(Sender: TObject);
                 procedure toolbar_drawOutlinesClick(Sender: TObject);
+                procedure toolbarMoveClick(Sender: TObject);
+                procedure toolbarSnapClick(Sender: TObject);
+                procedure menuSnapClick(Sender: TObject);
+                procedure ImageCanvasMouseMove(Sender: TObject;
+                  Shift: TShiftState; X, Y: integer);
+                procedure ImageCanvasDblClick(Sender: TObject);
+                procedure timerZoomTimer(Sender: TObject);
                 procedure toolBar_GP3PALMouseUp(Sender: TObject;
                   Button: TMouseButton; Shift: TShiftState; X, Y: integer);
                 procedure toolBar_GP2PALMouseUp(Sender: TObject;
@@ -278,13 +296,13 @@ type
                 procedure toolbarZoomOUTClick(Sender: TObject);
                 procedure menuDrawOutlinesClick(Sender: TObject);
                 procedure ShowHintInStatusBar(Sender: TObject);
-                // procedure ImageCanvasMouseMove(Sender: TObject; Shift: TShiftState; X,
-                // Y: Integer);
                 procedure ImageCanvasMouseUp(Sender: TObject;
                   Button: TMouseButton; Shift: TShiftState; X, Y: integer);
                 procedure mainMenuSaveAsClick(Sender: TObject);
                 procedure Button4Click(Sender: TObject);
                 procedure FormKeyDown(Sender: TObject; var Key: Word;
+                  Shift: TShiftState);
+                procedure FormKeyUp(Sender: TObject; var Key: Word;
                   Shift: TShiftState);
                 procedure tex_XKeyDown(Sender: TObject; var Key: Word;
                   Shift: TShiftState);
@@ -413,8 +431,26 @@ type
                 procedure DeleteTexture();
                 procedure JamModified(modified: boolean);
                 function JamSanityCheck(): boolean;
-                function HitTestResizeZone(X, Y, EntryX, EntryY, EntryW,
-                  EntryH: integer): TResizeMode;
+                function ScreenToCanvas(const P: TPoint): TPoint;
+                function HitTestTextureZone(MouseX, MouseY: integer;
+                  const R: TRect): TResizeMode;
+                function GetSelectedTextureScreenRect: TRect;
+                procedure ApplyTextureTransform(newX, newY, newW, newH: integer);
+                procedure UpdateCursorForHitZone(X, Y: integer);
+                procedure DeactivateMoveTool;
+                procedure CaptureDragBackground;
+                procedure ReleaseDragBackground;
+                procedure DrawDragPreview;
+                procedure DrawSnapGuidesOverlay;
+                procedure RestoreBackgroundRect(bmp: TBitmap;
+                  const R: TRect);
+                procedure InvalidateDragRegion;
+                procedure StartZoomTo(NewZoom: Double);
+                procedure ApplySnap(Mode: TResizeMode;
+                  var newX, newY, newW, newH: integer);
+                procedure ToggleSnap;
+                procedure CaptureOriginalSelectedState;
+                procedure RestoreOriginalSelectedState;
 
                 procedure genMask();
 
@@ -441,8 +477,45 @@ var
 
         SelectedTreeNodes: TList<TTreeNode>;
 
-        CurrentResizeMode: TResizeMode = rmNone;
-        LastMousePos: TPoint;
+        FMoveToolActive: Boolean;
+        FDrag: TDragState;
+        FDragBackground: TBitmap;   // cached scaled canvas with moving tex hidden
+        FDragTextureCache: TBitmap; // borrowed reference to moving texture's bitmap
+        FTargetZoom: Double;        // smooth-zoom target
+
+        // Space-bar pan state
+        FSpacePanArmed: Boolean;    // space held → ready to pan
+        FPanActive: Boolean;        // mouse down during pan → dragging
+        FPanStartMouse: TPoint;     // screen mouse pos at pan start
+        FPanStartScrollX: Integer;  // ScrollBox scroll pos at pan start
+        FPanStartScrollY: Integer;
+
+        // Snap state (updated per drag frame)
+        FSnapXActive: Boolean;
+        FSnapYActive: Boolean;
+        FSnapXLine: Integer; // canvas X where vertical guide should draw
+        FSnapYLine: Integer; // canvas Y where horizontal guide should draw
+
+        // Dirty-rect drag preview state — track previous frame's damaged
+        // areas so we can restore only the affected pixels each frame
+        // instead of copying the whole 32MB bitmap at high zoom.
+        FDragPrevTexRect: TRect;            // screen rect of texture last frame
+        FPrevSnapXActive: Boolean;
+        FPrevSnapYActive: Boolean;
+        FPrevSnapXLineScreen: Integer;      // screen X of last guide
+        FPrevSnapYLineScreen: Integer;      // screen Y of last guide
+        FDragDirtyRect: TRect;              // union of this frame's dirty regions
+        FLastDragTick: Cardinal;            // GetTickCount throttle for drag updates
+
+        // "Original" texture state captured when a texture is first
+        // selected in move mode. Escape restores this state (like Photoshop
+        // cancelling a Transform operation).
+        FOriginalSelectedIdx: Integer;
+        FOriginalSelectedX: Integer;
+        FOriginalSelectedY: Integer;
+        FOriginalSelectedW: Integer;
+        FOriginalSelectedH: Integer;
+
         userisTyping: boolean = false;
 
         boolFlagChange: boolean;
@@ -587,53 +660,510 @@ begin
                 Tree.Selected := Node;
 end;
 
-function TFormMain.HitTestResizeZone(X, Y, EntryX, EntryY, EntryW,
-  EntryH: integer): TResizeMode;
+function TFormMain.ScreenToCanvas(const P: TPoint): TPoint;
+begin
+        if intJamZoom = 0 then
+                Result := P
+        else
+        begin
+                Result.X := Round(P.X / intJamZoom);
+                Result.Y := Round(P.Y / intJamZoom);
+        end;
+end;
+
+function TFormMain.HitTestTextureZone(MouseX, MouseY: integer;
+  const R: TRect): TResizeMode;
+// Returns which zone the mouse is in for the selected texture's screen
+// rect R. Handles are padded OUTWARD by PADDING pixels (forgiveness for
+// lazy clicks) and extend INWARD up to HANDLE pixels.  Body = inside R.
+// Outside the outer bounds (R + PADDING) returns rmNone so cursor resets.
 const
-        HandleSize = 6;
+        HANDLE = 8;   // how far inward the corner/edge grab extends
+        PADDING = 6;  // how far outward the corner/edge grab extends
 var
-        RightX, BottomY: integer;
+        W, H, grabW, grabH: integer;
+        outerL, outerT, outerR, outerB: integer;
+        innerNorth, innerSouth, innerWest, innerEast: integer;
 begin
         Result := rmNone;
+        W := R.Right - R.Left;
+        H := R.Bottom - R.Top;
+        if (W <= 0) or (H <= 0) then Exit;
 
-        RightX := EntryX + EntryW;
-        BottomY := EntryY + EntryH;
+        // Tiny textures: shrink the inward grab so corners don't overlap.
+        grabW := Min(HANDLE, W div 2);
+        grabH := Min(HANDLE, H div 2);
 
-        // Corners
-        if (Abs(X - EntryX) <= HandleSize) and (Abs(Y - EntryY) <= HandleSize)
-        then
+        // Outer bounds = texture rect extended by PADDING. Outside this,
+        // nothing to grab.
+        outerL := R.Left   - PADDING;
+        outerT := R.Top    - PADDING;
+        outerR := R.Right  + PADDING;
+        outerB := R.Bottom + PADDING;
+        if (MouseX < outerL) or (MouseX > outerR) or
+          (MouseY < outerT) or (MouseY > outerB) then
+                Exit;
+
+        // Corner zones: a rectangle anchored at the corner extending
+        // PADDING outward and grabW/grabH inward.
+        if (MouseX <= R.Left + grabW) and (MouseY <= R.Top + grabH) then
                 Exit(rmTopLeft);
-        if (Abs(X - RightX) <= HandleSize) and (Abs(Y - EntryY) <= HandleSize)
-        then
+        if (MouseX >= R.Right - grabW) and (MouseY <= R.Top + grabH) then
                 Exit(rmTopRight);
-        if (Abs(X - RightX) <= HandleSize) and (Abs(Y - BottomY) <= HandleSize)
-        then
+        if (MouseX >= R.Right - grabW) and (MouseY >= R.Bottom - grabH) then
                 Exit(rmBottomRight);
-        if (Abs(X - EntryX) <= HandleSize) and (Abs(Y - BottomY) <= HandleSize)
-        then
+        if (MouseX <= R.Left + grabW) and (MouseY >= R.Bottom - grabH) then
                 Exit(rmBottomLeft);
 
-        // Edges
-        if (X > EntryX + HandleSize) and (X < RightX - HandleSize) then
-        begin
-                if Abs(Y - EntryY) <= HandleSize then
-                        Exit(rmTop);
-                if Abs(Y - BottomY) <= HandleSize then
-                        Exit(rmBottom);
-        end;
+        // Edges — only if the texture has a middle region between corners.
+        // (innerNorth, innerSouth, innerWest, innerEast) define the body
+        // area inside all four corner zones.
+        innerNorth := R.Top    + grabH;
+        innerSouth := R.Bottom - grabH;
+        innerWest  := R.Left   + grabW;
+        innerEast  := R.Right  - grabW;
 
-        if (Y > EntryY + HandleSize) and (Y < BottomY - HandleSize) then
+        if (innerEast > innerWest) and (innerSouth > innerNorth) then
         begin
-                if Abs(X - EntryX) <= HandleSize then
+                // Top edge strip
+                if (MouseY <= R.Top + HANDLE) and
+                  (MouseX > innerWest) and (MouseX < innerEast) then
+                        Exit(rmTop);
+                // Bottom edge strip
+                if (MouseY >= R.Bottom - HANDLE) and
+                  (MouseX > innerWest) and (MouseX < innerEast) then
+                        Exit(rmBottom);
+                // Left edge strip
+                if (MouseX <= R.Left + HANDLE) and
+                  (MouseY > innerNorth) and (MouseY < innerSouth) then
                         Exit(rmLeft);
-                if Abs(X - RightX) <= HandleSize then
+                // Right edge strip
+                if (MouseX >= R.Right - HANDLE) and
+                  (MouseY > innerNorth) and (MouseY < innerSouth) then
                         Exit(rmRight);
         end;
 
-        // Inside texture area (not edge/corner): move
-        if (X >= EntryX) and (X <= RightX) and (Y >= EntryY) and (Y <= BottomY)
-        then
-                Exit(rmMove);
+        // Body of the texture itself = move zone (no padding — only when
+        // actually inside the texture rect)
+        if PtInRect(R, Point(MouseX, MouseY)) then
+                Result := rmMove;
+end;
+
+function TFormMain.GetSelectedTextureScreenRect: TRect;
+var
+        W, H: integer;
+begin
+        FillChar(Result, SizeOf(Result), 0);
+        if intSelectedTexture < 0 then
+                Exit;
+
+        if boolHWJAM then
+        begin
+                if (FHWJamFile = nil) or
+                  (intSelectedTexture >= FHWJamFile.Entries.Count) then
+                        Exit;
+                with FHWJamFile.FEntries[intSelectedTexture].FInfo do
+                begin
+                        Result.Left := Round(X * intJamZoom);
+                        Result.Top := Round(Y * intJamZoom);
+                        W := Round(Width * intJamZoom);
+                        H := Round(Height * intJamZoom);
+                end;
+        end
+        else
+        begin
+                if (FJamFile = nil) or
+                  (intSelectedTexture >= FJamFile.Entries.Count) then
+                        Exit;
+                with FJamFile.FEntries[intSelectedTexture].FInfo do
+                begin
+                        Result.Left := Round(X * intJamZoom);
+                        Result.Top := Round(Y * intJamZoom);
+                        W := Round(Width * intJamZoom);
+                        H := Round(Height * intJamZoom);
+                end;
+        end;
+        Result.Right := Result.Left + W;
+        Result.Bottom := Result.Top + H;
+end;
+
+procedure TFormMain.ApplyTextureTransform(newX, newY, newW, newH: integer);
+var
+        shiftHeld: Boolean;
+begin
+        if intSelectedTexture < 0 then
+                Exit;
+
+        if newW < 1 then newW := 1;
+        if newH < 1 then newH := 1;
+
+        // Apply edge snapping during active drag. Snap is active when
+        // either the toolbar toggle is on OR the user is holding Shift
+        // (temporary snap override — Photoshop-style).
+        shiftHeld := (GetKeyState(VK_SHIFT) and $8000) <> 0;
+        if FDrag.Active and (boolSnapEnabled or shiftHeld) then
+                ApplySnap(FDrag.Mode, newX, newY, newW, newH);
+
+        // Clamp X/Y to stay within the canvas — prevents dragging textures
+        // outside 0,0. For SW JAMs this is also required by the packed
+        // record format (byte X / Word Y) which would wrap on negatives.
+        if newX < 0 then newX := 0;
+        if newY < 0 then newY := 0;
+
+        // Upper bound for SW only (byte X / Word Y storage limit)
+        if not boolHWJAM then
+        begin
+                if newX > 255 then newX := 255;
+                if newY > 65535 then newY := 65535;
+        end;
+
+        if boolHWJAM then
+        begin
+                FHWJamFile.FEntries[intSelectedTexture].FInfo.X := newX;
+                FHWJamFile.FEntries[intSelectedTexture].FInfo.Y := newY;
+                FHWJamFile.FEntries[intSelectedTexture].FInfo.Width := newW;
+                FHWJamFile.FEntries[intSelectedTexture].FInfo.Height := newH;
+        end
+        else
+        begin
+                FJamFile.FEntries[intSelectedTexture].FInfo.X := newX;
+                FJamFile.FEntries[intSelectedTexture].FInfo.Y := newY;
+                FJamFile.FEntries[intSelectedTexture].FInfo.Width := newW;
+                FJamFile.FEntries[intSelectedTexture].FInfo.Height := newH;
+        end;
+
+        // Update the spin-edit UI (suppress change events)
+        UpdatingFromCode := true;
+        try
+                tex_X.Value := newX;
+                tex_Y.Value := newY;
+                tex_width.Value := newW;
+                tex_height.Value := newH;
+        finally
+                UpdatingFromCode := false;
+        end;
+
+        boolJamModified := true;
+
+        // Fast-path during an active drag with a cached background:
+        // only re-draw the moving texture on top of the cached bitmap.
+        if FDrag.Active and (FDragBackground <> nil) and (not boolHWJAM) then
+        begin
+                DrawDragPreview;
+                // Snap guides (SW fast-path)
+                DrawSnapGuidesOverlay;
+                InvalidateDragRegion;
+        end
+        else
+        begin
+                RefreshCanvas;
+                if FDrag.Active then
+                        DrawSnapGuidesOverlay;
+                ImageCanvas.Invalidate;
+        end;
+end;
+
+procedure TFormMain.UpdateCursorForHitZone(X, Y: integer);
+var
+        zone: TResizeMode;
+        R: TRect;
+begin
+        if (intSelectedTexture < 0) or boolRcrJam then
+        begin
+                ImageCanvas.Cursor := crDefault;
+                Exit;
+        end;
+
+        R := GetSelectedTextureScreenRect;
+        zone := HitTestTextureZone(X, Y, R);
+
+        case zone of
+                rmMove:
+                        ImageCanvas.Cursor := crSizeAll;
+                rmTopLeft, rmBottomRight:
+                        ImageCanvas.Cursor := crSizeNWSE;
+                rmTopRight, rmBottomLeft:
+                        ImageCanvas.Cursor := crSizeNESW;
+                rmTop, rmBottom:
+                        ImageCanvas.Cursor := crSizeNS;
+                rmLeft, rmRight:
+                        ImageCanvas.Cursor := crSizeWE;
+        else
+                ImageCanvas.Cursor := crDefault;
+        end;
+end;
+
+procedure TFormMain.DeactivateMoveTool;
+begin
+        FMoveToolActive := false;
+        boolMoveToolActive := false;
+        FDrag.Active := false;
+        FDrag.Mode := rmNone;
+        FSnapXActive := False;
+        FSnapYActive := False;
+        FOriginalSelectedIdx := -1;
+        ReleaseDragBackground;
+        if toolbarMove.Down then
+                toolbarMove.Down := false;
+        ImageCanvas.Cursor := crDefault;
+        if booljamLoaded then
+                RefreshCanvas;
+end;
+
+procedure TFormMain.CaptureDragBackground;
+var
+        src: TBitmap;
+begin
+        // Called once when a move/resize drag begins.
+        // We render the canvas WITHOUT the moving texture (via the
+        // intDragSkipEntry mechanism), capture that as the drag
+        // background, and restore normal rendering. During drag, per-move
+        // frames blit this pristine background and composite the moving
+        // texture on top — so it always appears ABOVE other textures,
+        // with overlapping textures underneath correctly preserved.
+        ReleaseDragBackground;
+
+        if intSelectedTexture < 0 then Exit;
+        if boolHWJAM then Exit; // HW: still re-renders fully for now
+
+        // Tell DrawFullJam + DrawOutlines to skip the moving entry
+        intDragSkipEntry := intSelectedTexture;
+        try
+                RefreshCanvas;
+        finally
+                intDragSkipEntry := -1;
+        end;
+
+        src := ImageCanvas.Picture.Bitmap;
+        if (src = nil) or (src.Width = 0) or (src.Height = 0) then Exit;
+
+        FDragBackground := TBitmap.Create;
+        // Match the source's pixel format so BitBlt during drag is zero-cost
+        FDragBackground.PixelFormat := src.PixelFormat;
+        FDragBackground.SetSize(src.Width, src.Height);
+        BitBlt(FDragBackground.Canvas.Handle, 0, 0, src.Width, src.Height,
+          src.Canvas.Handle, 0, 0, SRCCOPY);
+
+        // Reset dirty-rect tracking — no previous frame yet
+        FDragPrevTexRect := Rect(0, 0, 0, 0);
+        FPrevSnapXActive := False;
+        FPrevSnapYActive := False;
+
+        // Cache a reference to the moving texture's bitmap for redraw
+        if (intPaletteID >= 0) and (intPaletteID <= 3) then
+                FDragTextureCache := FJamFile.FEntries[intSelectedTexture]
+                  .FCachedTex[intPaletteID];
+        if not Assigned(FDragTextureCache) then
+                FDragTextureCache := FJamFile.FEntries[intSelectedTexture]
+                  .FOriginalTex;
+end;
+
+procedure TFormMain.ReleaseDragBackground;
+begin
+        FreeAndNil(FDragBackground);
+        FDragTextureCache := nil; // borrowed, don't free
+end;
+
+procedure TFormMain.DrawDragPreview;
+// High-frequency path — runs on every mouse-move during drag. Must avoid
+// allocating or copying large bitmaps. Draws directly on
+// ImageCanvas.Picture.Bitmap's canvas, using FDragBackground as a cached
+// "clean" backdrop.
+var
+        bmp: TBitmap;
+        sx, sy, sw, sh: integer;
+        newTexRect: TRect;
+begin
+        if FDragBackground = nil then
+        begin
+                RefreshCanvas; // fallback
+                Exit;
+        end;
+        if intSelectedTexture < 0 then Exit;
+        if boolHWJAM then Exit;
+
+        // ImageCanvas.Picture.Bitmap was established at drag-start with
+        // the correct dimensions (by CaptureDragBackground → RefreshCanvas).
+        bmp := ImageCanvas.Picture.Bitmap;
+        if (bmp = nil) or (bmp.Width <> FDragBackground.Width) or
+          (bmp.Height <> FDragBackground.Height) then
+        begin
+                // Shouldn't happen; fall back to full refresh
+                RefreshCanvas;
+                Exit;
+        end;
+
+        // Reset dirty-rect tracker — RestoreBackgroundRect expands it as
+        // regions are touched, giving us a tight bounding rect to pass
+        // to InvalidateRect later.
+        FDragDirtyRect := Rect(0, 0, 0, 0);
+
+        // Compute new texture screen rect with a 14px margin for outlines
+        // + Photoshop handles (halfsize 4 + some buffer).
+        with FJamFile.FEntries[intSelectedTexture].FInfo do
+        begin
+                sx := Round(X * intJamZoom);
+                sy := Round(Y * intJamZoom);
+                sw := Round(Width * intJamZoom);
+                sh := Round(Height * intJamZoom);
+        end;
+        newTexRect := Rect(sx - 14, sy - 14, sx + sw + 14, sy + sh + 14);
+
+        // 1. Restore the area where the texture WAS last frame (erase)
+        if (FDragPrevTexRect.Right > FDragPrevTexRect.Left) and
+          (FDragPrevTexRect.Bottom > FDragPrevTexRect.Top) then
+                RestoreBackgroundRect(bmp, FDragPrevTexRect);
+
+        // 2. Restore the area where the texture IS this frame (clear
+        //    destination before drawing). Often overlaps with prev; that's
+        //    fine — BitBlt of the overlapping region just happens twice,
+        //    still way cheaper than the full bitmap.
+        RestoreBackgroundRect(bmp, newTexRect);
+
+        // 3. Restore previous snap guide strips (if any) so old lines vanish
+        if FPrevSnapXActive then
+                RestoreBackgroundRect(bmp, Rect(FPrevSnapXLineScreen - 2, 0,
+                  FPrevSnapXLineScreen + 3, bmp.Height));
+        if FPrevSnapYActive then
+                RestoreBackgroundRect(bmp, Rect(0, FPrevSnapYLineScreen - 2,
+                  bmp.Width, FPrevSnapYLineScreen + 3));
+
+        // 4. Restore where new snap guides will be (clean slate for redraw)
+        if FSnapXActive then
+        begin
+                sx := Round(FSnapXLine * intJamZoom);
+                RestoreBackgroundRect(bmp, Rect(sx - 2, 0, sx + 3, bmp.Height));
+        end;
+        if FSnapYActive then
+        begin
+                sy := Round(FSnapYLine * intJamZoom);
+                RestoreBackgroundRect(bmp, Rect(0, sy - 2, bmp.Width, sy + 3));
+        end;
+
+        // 5. Draw the moving texture at its new scaled rect with transparency
+        if Assigned(FDragTextureCache) then
+                with FJamFile.FEntries[intSelectedTexture].FInfo do
+                begin
+                        sx := Round(X * intJamZoom);
+                        sy := Round(Y * intJamZoom);
+                        sw := Round(Width * intJamZoom);
+                        sh := Round(Height * intJamZoom);
+                        if (sw > 0) and (sh > 0) then
+                                TransparentBlt(bmp.Canvas.Handle, sx, sy, sw, sh,
+                                  FDragTextureCache.Canvas.Handle, 0, 0,
+                                  FDragTextureCache.Width,
+                                  FDragTextureCache.Height,
+                                  RGB(gpxPal[0].r, gpxPal[0].g, gpxPal[0].b));
+                end;
+
+        // 6. Draw outline for the moving texture only
+        if boolDrawOutlines then
+                with FJamFile.FEntries[intSelectedTexture].FInfo do
+                        DrawTextureOutlines(bmp, X, Y, Width, Height,
+                          intSelectedTexture, JamID);
+
+        // Update dirty-rect tracking for next frame
+        FDragPrevTexRect := newTexRect;
+        FPrevSnapXActive := FSnapXActive;
+        FPrevSnapYActive := FSnapYActive;
+        if FSnapXActive then
+                FPrevSnapXLineScreen := Round(FSnapXLine * intJamZoom);
+        if FSnapYActive then
+                FPrevSnapYLineScreen := Round(FSnapYLine * intJamZoom);
+
+        // Snap guides + final invalidate are performed by the caller
+        // (ApplyTextureTransform) after this function returns, so both
+        // the SW fast-path and the HW full-refresh path get consistent
+        // guide drawing.
+end;
+
+procedure TFormMain.RestoreBackgroundRect(bmp: TBitmap; const R: TRect);
+// BitBlt a rectangular region from FDragBackground into bmp, clipped to
+// bitmap bounds. Used to erase previous-frame drawings without copying
+// the whole bitmap each frame. Also expands FDragDirtyRect so the caller
+// can InvalidateRect only the affected area.
+var
+        L, T, Rg, B: integer;
+begin
+        if FDragBackground = nil then Exit;
+        L := R.Left;
+        T := R.Top;
+        Rg := R.Right;
+        B := R.Bottom;
+        if L < 0 then L := 0;
+        if T < 0 then T := 0;
+        if Rg > bmp.Width then Rg := bmp.Width;
+        if B > bmp.Height then B := bmp.Height;
+        if (Rg <= L) or (B <= T) then Exit;
+        BitBlt(bmp.Canvas.Handle, L, T, Rg - L, B - T,
+          FDragBackground.Canvas.Handle, L, T, SRCCOPY);
+        // Expand dirty-rect tracker
+        if (FDragDirtyRect.Right <= FDragDirtyRect.Left) or
+          (FDragDirtyRect.Bottom <= FDragDirtyRect.Top) then
+                FDragDirtyRect := Rect(L, T, Rg, B)
+        else
+        begin
+                if L < FDragDirtyRect.Left then FDragDirtyRect.Left := L;
+                if T < FDragDirtyRect.Top then FDragDirtyRect.Top := T;
+                if Rg > FDragDirtyRect.Right then FDragDirtyRect.Right := Rg;
+                if B > FDragDirtyRect.Bottom then FDragDirtyRect.Bottom := B;
+        end;
+end;
+
+procedure TFormMain.InvalidateDragRegion;
+// Invalidates just the FDragDirtyRect area in the parent (ScrollBox)
+// coordinate space so Windows only repaints the small damaged region
+// rather than the entire ImageCanvas. TImage is a TGraphicControl and
+// has no window handle of its own — it paints through its parent.
+var
+        parentRect: TRect;
+begin
+        if (FDragDirtyRect.Right <= FDragDirtyRect.Left) or
+          (FDragDirtyRect.Bottom <= FDragDirtyRect.Top) then
+        begin
+                ImageCanvas.Invalidate;
+                Exit;
+        end;
+        if (ImageCanvas.Parent = nil) or
+          (not ImageCanvas.Parent.HandleAllocated) then
+        begin
+                ImageCanvas.Invalidate;
+                Exit;
+        end;
+        parentRect := FDragDirtyRect;
+        OffsetRect(parentRect, ImageCanvas.Left, ImageCanvas.Top);
+        Winapi.Windows.InvalidateRect(ImageCanvas.Parent.Handle,
+          @parentRect, False);
+end;
+
+procedure TFormMain.DrawSnapGuidesOverlay;
+// Draws the magenta dashed snap guide lines directly on ImageCanvas's
+// current bitmap. Used for both SW (after DrawDragPreview) and HW (after
+// RefreshCanvas) so guides appear consistently on both JAM types.
+var
+        bmp: TBitmap;
+        sx, sy: integer;
+begin
+        if not (FSnapXActive or FSnapYActive) then Exit;
+        bmp := ImageCanvas.Picture.Bitmap;
+        if (bmp = nil) or (bmp.Width = 0) or (bmp.Height = 0) then Exit;
+
+        bmp.Canvas.Pen.Style := psDash;
+        bmp.Canvas.Pen.Width := 1;
+        bmp.Canvas.Pen.Color := TColor($FF00FF); // magenta
+        bmp.Canvas.Brush.Style := bsClear;
+        if FSnapXActive then
+        begin
+                sx := Round(FSnapXLine * intJamZoom);
+                bmp.Canvas.MoveTo(sx, 0);
+                bmp.Canvas.LineTo(sx, bmp.Height);
+        end;
+        if FSnapYActive then
+        begin
+                sy := Round(FSnapYLine * intJamZoom);
+                bmp.Canvas.MoveTo(0, sy);
+                bmp.Canvas.LineTo(bmp.Width, sy);
+        end;
 end;
 
 procedure TFormMain.LoadMRU();
@@ -1491,33 +2021,75 @@ begin
 end;
 
 procedure TFormMain.toolbarZoomINClick(Sender: TObject);
+var base: Double;
 begin
-        intJamZoom := intJamZoom + 1;
-        RefreshCanvas;
+        if timerZoom.Enabled then base := FTargetZoom else base := intJamZoom;
+        StartZoomTo(base * 1.5);
 end;
 
 procedure TFormMain.toolbarZoomOUTClick(Sender: TObject);
+var base: Double;
 begin
-        if intJamZoom <= 0.4 then
-                Exit;
-
-        if intJamZoom <= 1 then
-                intJamZoom := intJamZoom - 0.2
-        else
-
-                intJamZoom := intJamZoom - 1;
-        RefreshCanvas;
+        if timerZoom.Enabled then base := FTargetZoom else base := intJamZoom;
+        StartZoomTo(base / 1.5);
 end;
 
 procedure TFormMain.toolbarZoomResetClick(Sender: TObject);
 begin
-        intJamZoom := 1;
-        RefreshCanvas;
+        StartZoomTo(1.0);
 end;
 
 procedure TFormMain.toolbar_drawOutlinesClick(Sender: TObject);
 begin
         btnDrawDataClick(Sender);
+end;
+
+procedure TFormMain.toolbarMoveClick(Sender: TObject);
+begin
+        FMoveToolActive := toolbarMove.Down;
+        boolMoveToolActive := FMoveToolActive;
+        FDrag.Active := false;
+        FDrag.Mode := rmNone;
+        if FMoveToolActive then
+        begin
+                // Capture the currently-selected texture's state so
+                // Escape can revert to it.
+                if (intSelectedTexture >= 0) and (not boolRcrJam) then
+                        CaptureOriginalSelectedState;
+        end
+        else
+        begin
+                ImageCanvas.Cursor := crDefault;
+                FOriginalSelectedIdx := -1;
+        end;
+        if booljamLoaded then
+                RefreshCanvas;
+end;
+
+procedure TFormMain.toolbarSnapClick(Sender: TObject);
+begin
+        ToggleSnap;
+end;
+
+procedure TFormMain.menuSnapClick(Sender: TObject);
+begin
+        ToggleSnap;
+end;
+
+procedure TFormMain.ImageCanvasDblClick(Sender: TObject);
+begin
+        // Activate transform tool on double-click of a texture.
+        // The first click already selected the texture; the second click
+        // triggers this DblClick event.
+        if not booljamLoaded then Exit;
+        if boolRcrJam then Exit; // move tool not supported on RCR
+        if intSelectedTexture < 0 then Exit;
+
+        if not FMoveToolActive then
+        begin
+                toolbarMove.Down := True;
+                toolbarMoveClick(nil);
+        end;
 end;
 
 procedure TFormMain.TreeReDraw();
@@ -3068,6 +3640,7 @@ var
 
 begin
         boolLCtrl := false;
+        FOriginalSelectedIdx := -1;
 
         ClipboardJAM := RegisterClipboardFormat(CLIPBOARD_JAM);
         ClipboardHWJAM := RegisterClipboardFormat(CLIPBOARD_HWJAM);
@@ -3320,71 +3893,430 @@ procedure TFormMain.FormKeyDown(Sender: TObject; var Key: Word;
 var
         i: integer;
 begin
-        // if boolJamLoaded = false then
-        // Exit;
-        //
-        // if SelectedTextureList.Count = 0 then
-        // Exit;
-        //
-        // case Key of
-        // VK_DELETE:
-        // begin
-        // DeleteTexture;
-        // Key := 0;
-        // end;
-        //
-        // end;
+        // Enter commits the current move/scale state and deactivates the
+        // tool. Escape CANCELS the current move/scale — it restores the
+        // selected texture to its state at the moment it was first
+        // selected in move mode, then deactivates the tool (Photoshop-
+        // style cancel-transform). Don't steal Enter/Escape when user is
+        // typing in a spin-edit.
+        if FMoveToolActive then
+        begin
+                if Key = VK_ESCAPE then
+                begin
+                        RestoreOriginalSelectedState;
+                        DeactivateMoveTool;
+                        Key := 0;
+                        Exit;
+                end;
+                if Key = VK_RETURN then
+                begin
+                        if (Screen.ActiveControl = nil) or
+                          (not (Screen.ActiveControl is TCustomEdit)) then
+                        begin
+                                DeactivateMoveTool;
+                                Key := 0;
+                                Exit;
+                        end;
+                end;
+        end;
 
+        // Space arms pan mode — mouse drag will scroll the canvas view.
+        // We consume the key at the form level to stop Windows from
+        // interpreting it as a system command (which pops up the window
+        // restore/move/size menu when no control owns focus).
+        if Key = VK_SPACE then
+        begin
+                // If the user is typing in an edit control, let the edit
+                // handle the space (don't arm pan, don't consume).
+                if (Screen.ActiveControl <> nil) and
+                  (Screen.ActiveControl is TCustomEdit) then
+                        Exit;
+                if userisTyping then
+                        Exit;
+
+                // Arm pan mode (only the first KeyDown — auto-repeat is fine)
+                if (not FSpacePanArmed) and (not FDrag.Active) then
+                begin
+                        FSpacePanArmed := True;
+                        ImageCanvas.Cursor := crSizeAll;
+                end;
+                Key := 0;  // always consume so Windows doesn't act on it
+                Exit;
+        end;
+end;
+
+procedure TFormMain.FormKeyUp(Sender: TObject; var Key: Word;
+  Shift: TShiftState);
+begin
+        if Key = VK_SPACE then
+        begin
+                if (Screen.ActiveControl <> nil) and
+                  (Screen.ActiveControl is TCustomEdit) then
+                        Exit;
+
+                FSpacePanArmed := False;
+                FPanActive := False;
+                ImageCanvas.Cursor := crDefault;
+                Key := 0;  // consume on key up too
+        end;
+end;
+
+procedure TFormMain.ApplySnap(Mode: TResizeMode;
+  var newX, newY, newW, newH: integer);
+// Snap the moving texture's active edges to nearby texture/canvas edges.
+// Threshold is measured in screen pixels (so feels consistent at any zoom),
+// converted to canvas pixels via intJamZoom. Sets FSnapXActive/FSnapYActive
+// so the drag preview can show a guide line.
+const
+        SNAP_SCREEN_PX = 6; // Photoshop-style: constant screen tolerance
+var
+        snapPx: integer;
+        i: integer;
+        canvasW, canvasH: integer;
+        xCands, yCands: array of integer;
+        xCount, yCount: integer;
+        activeLeft, activeRight, activeTop, activeBottom: Boolean;
+
+        procedure AddX(v: integer);
+        var k: integer;
+        begin
+                for k := 0 to xCount - 1 do
+                        if xCands[k] = v then Exit;
+                if xCount >= Length(xCands) then
+                        SetLength(xCands, xCount + 16);
+                xCands[xCount] := v;
+                Inc(xCount);
+        end;
+
+        procedure AddY(v: integer);
+        var k: integer;
+        begin
+                for k := 0 to yCount - 1 do
+                        if yCands[k] = v then Exit;
+                if yCount >= Length(yCands) then
+                        SetLength(yCands, yCount + 16);
+                yCands[yCount] := v;
+                Inc(yCount);
+        end;
+
+var
+        bestDX, bestDY: integer;
+        bestScoreX, bestScoreY: integer;
+        bestEdgeX, bestEdgeY: ShortString; // 'L','R' or 'T','B'
+        bestTargetX, bestTargetY: integer;
+        d, k: integer;
+begin
+        FSnapXActive := False;
+        FSnapYActive := False;
+
+        if not boolSnapEnabled then Exit;
+        if intSelectedTexture < 0 then Exit;
+
+        // Convert screen-pixel tolerance to canvas pixels
+        if intJamZoom <= 0 then
+                snapPx := SNAP_SCREEN_PX
+        else
+                snapPx := Max(1, Min(12, Round(SNAP_SCREEN_PX / intJamZoom)));
+
+        // Resolve active edges for this drag mode
+        activeLeft   := Mode in [rmMove, rmLeft,  rmTopLeft,  rmBottomLeft];
+        activeRight  := Mode in [rmMove, rmRight, rmTopRight, rmBottomRight];
+        activeTop    := Mode in [rmMove, rmTop,   rmTopLeft,  rmTopRight];
+        activeBottom := Mode in [rmMove, rmBottom,rmBottomLeft,rmBottomRight];
+
+        // Get canvas dimensions
+        if boolHWJAM then
+        begin
+                canvasW := FHWJamFile.canvasWidth;
+                canvasH := FHWJamFile.canvasHeight;
+        end
+        else
+        begin
+                canvasW := FJamFile.canvasWidth;
+                canvasH := FJamFile.canvasHeight;
+        end;
+
+        // Collect candidate edge positions
+        xCount := 0;
+        yCount := 0;
+        AddX(0);
+        AddX(canvasW);
+        AddY(0);
+        AddY(canvasH);
+
+        if boolHWJAM then
+        begin
+                for i := 0 to FHWJamFile.Entries.Count - 1 do
+                        if i <> intSelectedTexture then
+                                with FHWJamFile.FEntries[i].FInfo do
+                                begin
+                                        AddX(X);
+                                        AddX(X + Width);
+                                        AddY(Y);
+                                        AddY(Y + Height);
+                                end;
+        end
+        else
+        begin
+                for i := 0 to FJamFile.Entries.Count - 1 do
+                        if i <> intSelectedTexture then
+                                with FJamFile.FEntries[i].FInfo do
+                                begin
+                                        AddX(X);
+                                        AddX(X + Width);
+                                        AddY(Y);
+                                        AddY(Y + Height);
+                                end;
+        end;
+
+        // Find best X-axis snap
+        bestScoreX := snapPx + 1;
+        bestDX := 0;
+        bestEdgeX := '';
+        bestTargetX := 0;
+        if activeLeft then
+                for k := 0 to xCount - 1 do
+                begin
+                        d := xCands[k] - newX;
+                        if Abs(d) < bestScoreX then
+                        begin
+                                bestScoreX := Abs(d);
+                                bestDX := d;
+                                bestEdgeX := 'L';
+                                bestTargetX := xCands[k];
+                        end;
+                end;
+        if activeRight then
+                for k := 0 to xCount - 1 do
+                begin
+                        d := xCands[k] - (newX + newW);
+                        if Abs(d) < bestScoreX then
+                        begin
+                                bestScoreX := Abs(d);
+                                bestDX := d;
+                                bestEdgeX := 'R';
+                                bestTargetX := xCands[k];
+                        end;
+                end;
+
+        if bestEdgeX <> '' then
+        begin
+                if Mode = rmMove then
+                        newX := newX + bestDX
+                else if bestEdgeX = 'L' then
+                begin
+                        newX := newX + bestDX;
+                        newW := newW - bestDX;
+                end
+                else // 'R'
+                        newW := newW + bestDX;
+
+                FSnapXActive := True;
+                FSnapXLine := bestTargetX;
+        end;
+
+        // Find best Y-axis snap
+        bestScoreY := snapPx + 1;
+        bestDY := 0;
+        bestEdgeY := '';
+        bestTargetY := 0;
+        if activeTop then
+                for k := 0 to yCount - 1 do
+                begin
+                        d := yCands[k] - newY;
+                        if Abs(d) < bestScoreY then
+                        begin
+                                bestScoreY := Abs(d);
+                                bestDY := d;
+                                bestEdgeY := 'T';
+                                bestTargetY := yCands[k];
+                        end;
+                end;
+        if activeBottom then
+                for k := 0 to yCount - 1 do
+                begin
+                        d := yCands[k] - (newY + newH);
+                        if Abs(d) < bestScoreY then
+                        begin
+                                bestScoreY := Abs(d);
+                                bestDY := d;
+                                bestEdgeY := 'B';
+                                bestTargetY := yCands[k];
+                        end;
+                end;
+
+        if bestEdgeY <> '' then
+        begin
+                if Mode = rmMove then
+                        newY := newY + bestDY
+                else if bestEdgeY = 'T' then
+                begin
+                        newY := newY + bestDY;
+                        newH := newH - bestDY;
+                end
+                else // 'B'
+                        newH := newH + bestDY;
+
+                FSnapYActive := True;
+                FSnapYLine := bestTargetY;
+        end;
+
+        // Enforce minimum size after snap
+        if newW < 1 then newW := 1;
+        if newH < 1 then newH := 1;
+end;
+
+procedure TFormMain.ToggleSnap;
+begin
+        boolSnapEnabled := not boolSnapEnabled;
+        toolbarSnap.Down := boolSnapEnabled;
+        menuSnap.Checked := boolSnapEnabled;
+end;
+
+procedure TFormMain.CaptureOriginalSelectedState;
+// Records the currently selected texture's position+size. Escape will
+// restore to this. Called when a texture enters move-mode "editing"
+// (either by selecting it while tool is on, or by activating the tool
+// while it's selected).
+begin
+        if (intSelectedTexture < 0) or boolRcrJam then
+        begin
+                FOriginalSelectedIdx := -1;
+                Exit;
+        end;
+        if boolHWJAM then
+                with FHWJamFile.FEntries[intSelectedTexture].FInfo do
+                begin
+                        FOriginalSelectedX := X;
+                        FOriginalSelectedY := Y;
+                        FOriginalSelectedW := Width;
+                        FOriginalSelectedH := Height;
+                end
+        else
+                with FJamFile.FEntries[intSelectedTexture].FInfo do
+                begin
+                        FOriginalSelectedX := X;
+                        FOriginalSelectedY := Y;
+                        FOriginalSelectedW := Width;
+                        FOriginalSelectedH := Height;
+                end;
+        FOriginalSelectedIdx := intSelectedTexture;
+end;
+
+procedure TFormMain.RestoreOriginalSelectedState;
+// Escape cancels the current move/scale: revert to the state captured
+// at the time the texture first entered move-mode editing.
+begin
+        if FOriginalSelectedIdx < 0 then Exit;
+        if FOriginalSelectedIdx <> intSelectedTexture then Exit;
+
+        // Stop any active drag so ApplyTextureTransform doesn't try to
+        // snap or capture anything weird.
+        FDrag.Active := False;
+        FDrag.Mode := rmNone;
+        ReleaseDragBackground;
+
+        ApplyTextureTransform(FOriginalSelectedX, FOriginalSelectedY,
+          FOriginalSelectedW, FOriginalSelectedH);
+end;
+
+procedure TFormMain.StartZoomTo(NewZoom: Double);
+// Schedules a smooth animation from intJamZoom to NewZoom. Successive calls
+// just update the target — animation re-aims mid-flight for fluid feel.
+const
+        MIN_ZOOM = 0.25; // 4× zoomed out
+        MAX_ZOOM = 8.0;  // 8× zoomed in — more than enough for pixel-level work
+begin
+        if NewZoom < MIN_ZOOM then NewZoom := MIN_ZOOM;
+        if NewZoom > MAX_ZOOM then NewZoom := MAX_ZOOM;
+
+        FTargetZoom := NewZoom;
+
+        // Skip animation while a drag is active (snap instantly to avoid
+        // interfering with the live drag preview), or if timer isn't wired.
+        if FDrag.Active or (timerZoom = nil) then
+        begin
+                intJamZoom := FTargetZoom;
+                if booljamLoaded then RefreshCanvas;
+                Exit;
+        end;
+
+        timerZoom.Enabled := True;
+end;
+
+procedure TFormMain.timerZoomTimer(Sender: TObject);
+const
+        EASE = 0.30; // fraction of remaining distance per tick (~60fps)
+        SNAP = 0.01; // close enough — snap to target
+var
+        delta: Double;
+begin
+        delta := FTargetZoom - intJamZoom;
+        if Abs(delta) <= SNAP then
+        begin
+                intJamZoom := FTargetZoom;
+                timerZoom.Enabled := False;
+        end
+        else
+                intJamZoom := intJamZoom + delta * EASE;
+
+        if booljamLoaded then
+                RefreshCanvas;
 end;
 
 procedure TFormMain.FormMouseWheel(Sender: TObject; Shift: TShiftState;
   WheelDelta: integer; MousePos: TPoint; var Handled: boolean);
 const
-        ZoomStep = 0.1;
+        ZOOM_FACTOR = 1.15; // multiplicative step — feels natural
 var
-        OldZoom, NewZoom: Double;
+        OldZoom, NewTarget: Double;
         CursorPos: TPoint;
         ImgPos: TPoint;
         RelX, RelY: Double;
 begin
+        // Only zoom when ALT is held; otherwise pass the wheel through to
+        // the ScrollBox for normal scrolling.
+        if not (ssAlt in Shift) then
+        begin
+                Handled := False;
+                Exit;
+        end;
 
         if boolJamLoaded = false then
                 Exit;
 
-        // Convert screen to ScrollBox client coordinates
         CursorPos := ScrollBox1.ScreenToClient(MousePos);
-
-        // Only zoom if the mouse is inside the ScrollBox
         if not PtInRect(ScrollBox1.ClientRect, CursorPos) then
                 Exit;
 
         OldZoom := intJamZoom;
 
-        if WheelDelta > 0 then
-                intJamZoom := intJamZoom + ZoomStep
+        // Successive wheel notches keep building on the target rather than
+        // current intJamZoom (which may still be mid-animation)
+        if timerZoom.Enabled then
+                NewTarget := FTargetZoom
         else
-                intJamZoom := Max(0.1, intJamZoom - ZoomStep);
+                NewTarget := intJamZoom;
 
-        NewZoom := intJamZoom;
+        if WheelDelta > 0 then
+                NewTarget := NewTarget * ZOOM_FACTOR
+        else
+                NewTarget := NewTarget / ZOOM_FACTOR;
 
-        // Preserve position under mouse
-        CursorPos := ScrollBox1.ScreenToClient(MousePos);
+        // Preserve position under mouse — compute recentre based on OldZoom
         ImgPos := Point(ImageCanvas.Left, ImageCanvas.Top);
         RelX := (CursorPos.X - ImgPos.X) / OldZoom;
         RelY := (CursorPos.Y - ImgPos.Y) / OldZoom;
 
-        intJamZoom := NewZoom;
+        StartZoomTo(NewTarget);
 
-        if intJamZoom <= 0.4 then
-                Exit;
-
-        // Recenter scroll based on relative mouse position
+        // Recentre using the final target (approx). Animation will not
+        // re-centre per frame, but end state is correct.
         ScrollBox1.HorzScrollBar.Position :=
-          Round((RelX * NewZoom) - CursorPos.X);
+          Round((RelX * FTargetZoom) - CursorPos.X);
         ScrollBox1.VertScrollBar.Position :=
-          Round((RelY * NewZoom) - CursorPos.Y);
+          Round((RelY * FTargetZoom) - CursorPos.Y);
 
-        RefreshCanvas;
         Handled := true;
 end;
 
@@ -3433,10 +4365,81 @@ procedure TFormMain.ImageCanvasMouseDown(Sender: TObject; Button: TMouseButton;
   Shift: TShiftState; X, Y: integer);
 var
         i, jamX, jamY, jamW, jamH, tempX, tempY: integer;
+        selRect: TRect;
+        hitMode: TResizeMode;
+        canvasPt: TPoint;
+        screenPt: TPoint;
 begin
 
         if not boolJamLoaded then
                 Exit;
+
+        // ----- Space-bar panning: hold space + drag to scroll the canvas -----
+        if FSpacePanArmed and (Button = mbLeft) then
+        begin
+                FPanActive := True;
+                // Record screen-space start so we can compute deltas across
+                // scroll-box positions reliably
+                screenPt := ImageCanvas.ClientToScreen(Point(X, Y));
+                FPanStartMouse := screenPt;
+                FPanStartScrollX := ScrollBox1.HorzScrollBar.Position;
+                FPanStartScrollY := ScrollBox1.VertScrollBar.Position;
+                ImageCanvas.Cursor := crSizeAll;
+                Exit;
+        end;
+
+        // ----- Move/scale tool: start drag if click is on the current
+        // selection's body or handles. Any click elsewhere falls through
+        // to normal selection (which will pick whichever texture was
+        // clicked, or deselect if empty space).
+        if FMoveToolActive and (Button = mbLeft) and (not boolRcrJam) and
+          (intSelectedTexture >= 0) then
+        begin
+                selRect := GetSelectedTextureScreenRect;
+                hitMode := HitTestTextureZone(X, Y, selRect);
+
+                if hitMode <> rmNone then
+                begin
+                        canvasPt := ScreenToCanvas(Point(X, Y));
+                        FDrag.Active := true;
+                        FDrag.Mode := hitMode;
+                        FDrag.StartMouseX := canvasPt.X;
+                        FDrag.StartMouseY := canvasPt.Y;
+                        if boolHWJAM then
+                                with FHWJamFile.FEntries[intSelectedTexture].FInfo do
+                                begin
+                                        FDrag.StartX := X;
+                                        FDrag.StartY := Y;
+                                        FDrag.StartW := Width;
+                                        FDrag.StartH := Height;
+                                end
+                        else
+                                with FJamFile.FEntries[intSelectedTexture].FInfo do
+                                begin
+                                        FDrag.StartX := X;
+                                        FDrag.StartY := Y;
+                                        FDrag.StartW := Width;
+                                        FDrag.StartH := Height;
+                                end;
+                        if FDrag.StartH > 0 then
+                                FDrag.AspectRatio := FDrag.StartW / FDrag.StartH
+                        else
+                                FDrag.AspectRatio := 1;
+                        if boolUndo then
+                                PushUndoState;
+                        boolUndo := false;
+                        // Cache the scaled canvas WITHOUT the moving texture
+                        // so per-move frames don't need to StretchBlt the
+                        // whole canvas. Disabled for HW for now.
+                        if not boolHWJAM then
+                                CaptureDragBackground;
+                        Exit; // Skip normal selection logic during drag
+                end;
+                // rmNone: click is outside the selected texture's hit zone.
+                // Fall through to normal selection — the code below will
+                // pick up any texture the user actually clicked on.
+        end;
+
         if not(ssShift in Shift) then
         begin
                 SelectedTextureList.Clear;
@@ -3462,8 +4465,8 @@ begin
                                 jamH := Round(height * intJamZoom);
                         end;
 
-                        if (X >= jamX) and (X < jamX + jamW) and (Y >= jamY) and
-                          (Y < jamY + jamH) then
+                        if (tempX >= jamX) and (tempX < jamX + jamW) and
+                          (tempY >= jamY) and (tempY < jamY + jamH) then
                         begin
                                 intSelectedTexture := i;
                                 if not SelectedTextureList.Contains(i) then
@@ -3479,22 +4482,33 @@ begin
                 begin
                         with FJamFile.Entries[i].Info do
                         begin
-                                jamX := Round(X * intJamZoom);
-                                jamY := Round(Y * intJamZoom);
-                                jamW := Round(Width * intJamZoom);
-                                jamH := Round(height * intJamZoom);
-                                if boolRCRJAM then
+                                if boolRcrJam then
                                 begin
-                                        jamX := Round((X div 2) * intJamZoom);
+                                        // Match DrawOutlines + DrawTextureOutlines
+                                        // coordinate transform exactly
                                         if Y mod 2 <> 0 then
-                                        jamX := Round
-                                        (((X + 255) div 2) * intJamZoom);
-
-                                        jamW := Round
-                                        ((Width div 2) * intJamZoom);
-
-                                        jamH := jamH div 2;
-                                        jamY := jamY div 2;
+                                        begin
+                                                // Odd Y: right half of deinterlaced canvas
+                                                jamX := Round(((X + 256) div 2) * intJamZoom);
+                                                jamY := Round(((Y - 1) div 2) * intJamZoom);
+                                        end
+                                        else
+                                        begin
+                                                // Even Y: left half
+                                                jamX := Round((X div 2) * intJamZoom);
+                                                jamY := Round((Y div 2) * intJamZoom);
+                                        end;
+                                        // Width: *2 then /2 in outline pipeline = original
+                                        jamW := Round(Width * intJamZoom);
+                                        // Height: NOT halved (matches DrawTextureOutlines)
+                                        jamH := Round(Height * intJamZoom);
+                                end
+                                else
+                                begin
+                                        jamX := Round(X * intJamZoom);
+                                        jamY := Round(Y * intJamZoom);
+                                        jamW := Round(Width * intJamZoom);
+                                        jamH := Round(Height * intJamZoom);
                                 end;
                         end;
 
@@ -3534,93 +4548,162 @@ begin
 
 end;
 
-// procedure TFormMain.ImageCanvasMouseMove(Sender: TObject; Shift: TShiftState; X, Y: Integer);
-// var
-// dx, dy: Integer;
-// Info: TJamEntryRef;
-// begin
-// if intSelectedTexture = -1 then Exit;
-// if ssLeft in Shift then
-// begin
-// dx := Round(X / intJamZoom) - LastMousePos.X;
-// dy := Round(Y / intJamZoom) - LastMousePos.Y;
-// end;
-//
-// if boolHWJAM then
-// info := TJamEntryRef.FromHW(FHWJamFile.Entries[intSelectedTexture].Info)
-// else
-// info := TJamEntryRef.FromSW(FJamFile.Entries[intSelectedTexture].Info);
-//
-//
-// case CurrentResizeMode of
-// rmMove:
-// begin
-// info.SetX(info.X + dx);
-// info.SetY(info.y + dy);
-// end;
-// rmTopLeft:
-// begin
-// info.SetX(info.X - dx);
-// info.SetWidth(dx + info.Width);
-// info.sety(info.y - dy);
-// info.setheight(info.width + dy);
-// end;
-// rmTop:
-// begin
-// info.setY(info.y - dy);
-// info.setheight(info.height + dy)
-// end;
-// rmTopRight:
-// begin
-// info.SetWidth(info.Width + dx);
-// info.SetY(info.y - dy);
-// info.SetHeight(info.height + dy);
-// end;
-// rmRight:
-// info.SetWidth(dx + info.Width);
-// rmBottomRight:
-// begin
-// info.SetWidth(dx + info.Width);
-// info.setheight(info.width + dy);
-// end;
-// rmBottom:
-// info.setheight(info.width + dx);
-// rmBottomLeft:
-// begin
-// info.setx(info.x - dx);
-// info.SetWidth(dx + info.Width);
-// info.setheight(info.width + dx);
-//
-// end;
-// rmLeft:
-// begin
-// info.setx(info.x - dx);
-// info.setwidth(info.width + dx);
-// end;
-// end;
-//
-// LastMousePos := Point(Round(X / intJamZoom), Round(Y / intJamZoom));
-//
-// // Ensure values stay positive and within bounds
-// Info.SetWidth(Max(1, Info.Width));
-// Info.SetHeight(Max(1, Info.Height));
-//
-/// /    // Write back updated info
-/// /    if boolHWJam then
-/// /      FHWJamFile.Entries[intSelectedTexture].Info := Info
-/// /    else
-/// /      FJamFile.Entries[intSelectedTexture].Info := Info;
-//
-// // Push to UI + Canvas
-// //UpdateJamData(intSelectedTexture);
-// refreshcanvas;
-// end;
+procedure TFormMain.ImageCanvasMouseMove(Sender: TObject; Shift: TShiftState;
+  X, Y: integer);
+var
+        canvasPt: TPoint;
+        dx, dy: integer;
+        newX, newY, newW, newH: integer;
+        shiftHeld: Boolean;
+        screenPt: TPoint;
+begin
+        if not boolJamLoaded then
+                Exit;
+
+        // ----- Space-bar panning -----
+        if FPanActive then
+        begin
+                screenPt := ImageCanvas.ClientToScreen(Point(X, Y));
+                dx := FPanStartMouse.X - screenPt.X;
+                dy := FPanStartMouse.Y - screenPt.Y;
+                ScrollBox1.HorzScrollBar.Position := FPanStartScrollX + dx;
+                ScrollBox1.VertScrollBar.Position := FPanStartScrollY + dy;
+                Exit;
+        end;
+
+        if boolRcrJam then
+                Exit;
+
+        // Hover: cursor feedback when move tool active but not dragging
+        if FMoveToolActive and (not FDrag.Active) then
+        begin
+                UpdateCursorForHitZone(X, Y);
+                Exit;
+        end;
+
+        if not FDrag.Active then
+                Exit;
+
+        // Throttle drag updates to ~60fps. Mice can fire MouseMove at 1000Hz;
+        // re-rendering each one wastes CPU and visual updates cap at screen
+        // refresh anyway. Final MouseUp position is always exact.
+        if GetTickCount - FLastDragTick < 16 then
+                Exit;
+        FLastDragTick := GetTickCount;
+
+        canvasPt := ScreenToCanvas(Point(X, Y));
+        dx := canvasPt.X - FDrag.StartMouseX;
+        dy := canvasPt.Y - FDrag.StartMouseY;
+        shiftHeld := ssShift in Shift;
+
+        case FDrag.Mode of
+                rmMove:
+                        ApplyTextureTransform(FDrag.StartX + dx, FDrag.StartY + dy,
+                          FDrag.StartW, FDrag.StartH);
+
+                rmRight:
+                        ApplyTextureTransform(FDrag.StartX, FDrag.StartY,
+                          Max(1, FDrag.StartW + dx), FDrag.StartH);
+
+                rmBottom:
+                        ApplyTextureTransform(FDrag.StartX, FDrag.StartY,
+                          FDrag.StartW, Max(1, FDrag.StartH + dy));
+
+                rmLeft:
+                        begin
+                                newW := Max(1, FDrag.StartW - dx);
+                                ApplyTextureTransform(
+                                  FDrag.StartX + (FDrag.StartW - newW),
+                                  FDrag.StartY, newW, FDrag.StartH);
+                        end;
+
+                rmTop:
+                        begin
+                                newH := Max(1, FDrag.StartH - dy);
+                                ApplyTextureTransform(FDrag.StartX,
+                                  FDrag.StartY + (FDrag.StartH - newH),
+                                  FDrag.StartW, newH);
+                        end;
+
+                rmBottomRight:
+                        begin
+                                newW := Max(1, FDrag.StartW + dx);
+                                newH := Max(1, FDrag.StartH + dy);
+                                if not shiftHeld then
+                                        newH := Max(1,
+                                          Round(newW / FDrag.AspectRatio));
+                                ApplyTextureTransform(FDrag.StartX, FDrag.StartY,
+                                  newW, newH);
+                        end;
+
+                rmTopLeft:
+                        begin
+                                newW := Max(1, FDrag.StartW - dx);
+                                newH := Max(1, FDrag.StartH - dy);
+                                if not shiftHeld then
+                                        newH := Max(1,
+                                          Round(newW / FDrag.AspectRatio));
+                                newX := FDrag.StartX + (FDrag.StartW - newW);
+                                newY := FDrag.StartY + (FDrag.StartH - newH);
+                                ApplyTextureTransform(newX, newY, newW, newH);
+                        end;
+
+                rmTopRight:
+                        begin
+                                newW := Max(1, FDrag.StartW + dx);
+                                newH := Max(1, FDrag.StartH - dy);
+                                if not shiftHeld then
+                                        newH := Max(1,
+                                          Round(newW / FDrag.AspectRatio));
+                                newY := FDrag.StartY + (FDrag.StartH - newH);
+                                ApplyTextureTransform(FDrag.StartX, newY,
+                                  newW, newH);
+                        end;
+
+                rmBottomLeft:
+                        begin
+                                newW := Max(1, FDrag.StartW - dx);
+                                newH := Max(1, FDrag.StartH + dy);
+                                if not shiftHeld then
+                                        newH := Max(1,
+                                          Round(newW / FDrag.AspectRatio));
+                                newX := FDrag.StartX + (FDrag.StartW - newW);
+                                ApplyTextureTransform(newX, FDrag.StartY,
+                                  newW, newH);
+                        end;
+        end;
+end;
 
 procedure TFormMain.ImageCanvasMouseUp(Sender: TObject; Button: TMouseButton;
   Shift: TShiftState; X, Y: integer);
 begin
         if Button = mbLeft then
-                CurrentResizeMode := rmNone;
+        begin
+                // End pan
+                if FPanActive then
+                begin
+                        FPanActive := False;
+                        // If space still held, keep pan cursor; else default
+                        if FSpacePanArmed then
+                                ImageCanvas.Cursor := crSizeAll
+                        else
+                                ImageCanvas.Cursor := crDefault;
+                        Exit;
+                end;
+
+                if FDrag.Active then
+                begin
+                        FDrag.Active := false;
+                        FDrag.Mode := rmNone;
+                        boolUndo := true; // re-arm undo for next action
+                        FSnapXActive := False;
+                        FSnapYActive := False;
+                        ReleaseDragBackground;
+                        // Do a full composite refresh now that drag is done
+                        if booljamLoaded then
+                                RefreshCanvas;
+                end;
+        end;
 end;
 
 procedure TFormMain.JamTreeAdvancedCustomDrawItem(Sender: TCustomTreeView;
@@ -4778,10 +5861,14 @@ begin
 end;
 
 procedure TFormMain.SelectTexture(id: integer; treeupdate: boolean);
+var
+        wasSelected: integer;
 begin
 
         if id = -1 then
                 Exit;
+
+        wasSelected := intSelectedTexture;
 
         if treeupdate then
         begin
@@ -4795,6 +5882,13 @@ begin
         boolTexSelected := true;
 
         intSelectedTexture := id;
+
+        // Move-tool "original state" snapshot: record this texture's
+        // current position+size when it first becomes the active target
+        // in move mode, so Escape can restore it.
+        if FMoveToolActive and (not boolRcrJam) and
+          (wasSelected <> id) and (not FDrag.Active) then
+                CaptureOriginalSelectedState;
 
         UpdatingFromCode := true;
 

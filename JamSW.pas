@@ -1631,6 +1631,10 @@ begin
 
       for i := 0 to FEntries.Count - 1 do
       begin
+        // Drag-preview optimisation: skip the moving entry entirely so
+        // its position's background shows through cleanly
+        if i = intDragSkipEntry then
+          continue;
         if UIUpdate then
         begin
           entryBmp := FEntries[i].FCachedTex[intPaletteID];
@@ -1790,6 +1794,10 @@ begin
   try
     // Draw on the clone
     for i := 0 to FEntries.Count - 1 do
+    begin
+      // Drag-preview: skip outline for the moving entry
+      if i = intDragSkipEntry then
+        Continue;
       with FEntries[i].Info do
       begin
         tempX := X;
@@ -1815,6 +1823,7 @@ begin
         else
           DrawTextureOutlines(tmpBMP, X, Y, Width, Height, i, JamId);
       end;
+    end;
     // Hand ownership to the caller
     Result := tmpBMP;
     tmpBMP := nil;

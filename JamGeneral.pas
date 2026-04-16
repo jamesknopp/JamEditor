@@ -171,6 +171,12 @@ var
   intJamZoom: double;
 
   boolDrawOutlines: Boolean;
+  boolMoveToolActive: Boolean;
+  boolSnapEnabled: Boolean;
+  // If >= 0, DrawFullJam / DrawOutlines skips this entry index. Used by
+  // the move tool to capture a "pristine" background without the moving
+  // texture so its new position can be composited cleanly.
+  intDragSkipEntry: Integer = -1;
 
   intSelectedTexture: Integer;
   boolTexSelected: Boolean;
@@ -243,6 +249,9 @@ uses MainForm;
 
 function DrawTextureOutlines(jamCanvas: TBitmap; X: Integer; Y: Integer;
   Width: Integer; Height: Integer; i: Integer; JamID: Integer): TBitmap;
+const
+  HANDLE = 3; // half-size: 7x7 constant-pixel handle squares
+  PS_BLUE = TColor($D77800); // BGR = RGB(0,120,215) — Windows accent blue
 var
   textW, textH: Integer;
   idText: string;
@@ -251,6 +260,19 @@ var
   w, h, j, k: Integer;
   drawColour: TColor;
   selectColour: TColor;
+  isSelected: Boolean;
+
+  procedure DrawHandle(hx, hy: Integer);
+  begin
+    jamCanvas.Canvas.Brush.Color := clWhite;
+    jamCanvas.Canvas.Brush.Style := bsSolid;
+    jamCanvas.Canvas.Pen.Color := PS_BLUE;
+    jamCanvas.Canvas.Pen.Style := psSolid;
+    jamCanvas.Canvas.Pen.Width := 1;
+    jamCanvas.Canvas.Rectangle(hx - HANDLE, hy - HANDLE,
+      hx + HANDLE + 1, hy + HANDLE + 1);
+  end;
+
 begin
   if not boolDrawOutlines then
     exit(jamCanvas);
@@ -261,79 +283,102 @@ begin
     Width := Width div 2;
   end;
 
-  drawColour := clInactiveBorder;
-  selectColour := clHighlight;
-
-  if boolJamIssues then
-  begin
-    for k := 0 to IntersectList.Count - 1 do
-      if IntersectList[k].JamID = JamID then
-      begin
-        drawColour := clRed;
-        selectColour := clYellow;
-      end;
-  end;
+  // Is this entry the currently selected one?
+  isSelected := False;
+  for j in SelectedTextureList do
+    if j = i then
+    begin
+      isSelected := True;
+      Break;
+    end;
 
   jamCanvas.Canvas.lock;
+  try
+    w := round(Width * intJamZoom);
+    h := round(Height * intJamZoom);
+    Y := round(Y * intJamZoom);
+    X := round(X * intJamZoom);
 
-  jamCanvas.Canvas.Pen.Style := psSolid;
-  jamCanvas.Canvas.Pen.Width := 1;
-  jamCanvas.Canvas.Brush.Style := bsClear;
+    // Move tool active + selected texture -> Photoshop-style handles
+    if boolMoveToolActive and isSelected then
+    begin
+      jamCanvas.Canvas.Brush.Style := bsClear;
+      jamCanvas.Canvas.Pen.Style := psSolid;
+      jamCanvas.Canvas.Pen.Width := 1;
+      jamCanvas.Canvas.Pen.Color := PS_BLUE;
+      jamCanvas.Canvas.Rectangle(X, Y, X + w, Y + h);
 
-  w := round(Width * intJamZoom);
-  h := round(Height * intJamZoom);
-  Y := round(Y * intJamZoom);
-  X := round(X * intJamZoom);
+      // 8 handles: 4 corners + 4 edge midpoints
+      DrawHandle(X,         Y);              // top-left
+      DrawHandle(X + w div 2, Y);            // top-mid
+      DrawHandle(X + w,     Y);              // top-right
+      DrawHandle(X + w,     Y + h div 2);    // right-mid
+      DrawHandle(X + w,     Y + h);          // bottom-right
+      DrawHandle(X + w div 2, Y + h);        // bottom-mid
+      DrawHandle(X,         Y + h);          // bottom-left
+      DrawHandle(X,         Y + h div 2);    // left-mid
 
-  jamCanvas.Canvas.Pen.Color := drawColour;
-  // Set pen color for outlines
-  for j in SelectedTextureList do
-  begin
-    if j = i then
-      jamCanvas.Canvas.Pen.Color := selectColour;
+      // No JamID label in move mode
+      Exit(jamCanvas);
+    end;
+
+    // Standard outline path (unchanged behaviour)
+    drawColour := clInactiveBorder;
+    selectColour := clHighlight;
+
+    if boolJamIssues then
+    begin
+      for k := 0 to IntersectList.Count - 1 do
+        if IntersectList[k].JamID = JamID then
+        begin
+          drawColour := clRed;
+          selectColour := clYellow;
+        end;
+    end;
+
+    jamCanvas.Canvas.Pen.Style := psSolid;
+    jamCanvas.Canvas.Pen.Width := 1;
+    jamCanvas.Canvas.Brush.Style := bsClear;
+
+    if isSelected then
+      jamCanvas.Canvas.Pen.Color := selectColour
+    else
+      jamCanvas.Canvas.Pen.Color := drawColour;
+
+    jamCanvas.Canvas.Rectangle(X, Y, X + w, Y + h);
+
+    jamCanvas.Canvas.font.IsScreenFont := True;
+    jamCanvas.Canvas.font.size := min(12, Max(5, round(5 * intJamZoom)));
+    jamCanvas.Canvas.font.Quality := fqClearTypeNatural;
+    jamCanvas.Canvas.font.name := 'Segoe UI';
+
+    // Draw texture ID at top-left
+    idText := 'Jam ID: ' + JamID.ToString;
+
+    textW := jamCanvas.Canvas.TextWidth(idText) + 10;
+    textH := jamCanvas.Canvas.TextHeight(idText) + 2;
+
+    rectX := X;
+    rectY := Y;
+    textRect := Rect(rectX, rectY, rectX + textW, rectY + textH);
+
+    jamCanvas.Canvas.Brush.Style := bsSolid;
+    if isSelected then
+      jamCanvas.Canvas.Brush.Color := selectColour
+    else
+      jamCanvas.Canvas.Brush.Color := drawColour;
+
+    jamCanvas.Canvas.Pen.Color := clBlack;
+    jamCanvas.Canvas.Rectangle(textRect);
+
+    jamCanvas.Canvas.font.Color := clBlack;
+    jamCanvas.Canvas.Brush.Style := bsClear;
+    jamCanvas.Canvas.TextOut(rectX + 6, rectY + 1, idText);
+  finally
+    jamCanvas.Canvas.Unlock;
   end;
-
-  jamCanvas.Canvas.Rectangle(X, Y, X + w, Y + h);
-
-  jamCanvas.Canvas.font.IsScreenFont := True;
-  jamCanvas.Canvas.font.size := min(12, Max(5, round(5 * intJamZoom)));
-  jamCanvas.Canvas.font.Quality := fqClearTypeNatural;
-  jamCanvas.Canvas.font.name := 'Segoe UI';
-
-  // Draw texture ID at top-left
-  idText := 'Jam ID: ' + JamID.ToString;
-
-  // Measure text dimensions
-  textW := jamCanvas.Canvas.TextWidth(idText) + 10; // Padding
-  textH := jamCanvas.Canvas.TextHeight(idText) + 2;
-
-  rectX := X;
-  rectY := Y;
-  textRect := Rect(rectX, rectY, rectX + textW, rectY + textH);
-
-  // Draw filled rectangle with black border
-  jamCanvas.Canvas.Brush.Style := bsSolid;
-  jamCanvas.Canvas.Brush.Color := drawColour;
-
-  for j in SelectedTextureList do
-  begin
-    if j = i then
-      jamCanvas.Canvas.Brush.Color := selectColour;
-  end;
-
-  jamCanvas.Canvas.Pen.Color := clBlack;
-  jamCanvas.Canvas.Rectangle(textRect);
-
-  // Draw text in black
-  jamCanvas.Canvas.font.Color := clBlack;
-  jamCanvas.Canvas.Brush.Style := bsClear; // Transparent for text
-
-  jamCanvas.Canvas.TextOut(rectX + 6, rectY + 1, idText);
-
-  jamCanvas.Canvas.Unlock;
 
   Result := jamCanvas;
-
 end;
 
 function CreateTransparencyMatte(const Bmp: TBitmap): TBitmap;

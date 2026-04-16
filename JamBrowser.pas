@@ -544,9 +544,6 @@ begin
     OffsetX := (maxSize - ThumbW) div 2;
     OffsetY := (maxSize - ThumbH) div 2;
     Result.Canvas.Draw(OffsetX, OffsetY, ThumbBmp);
-
-    // Release GDI handle so it can be re-created on the main thread
-    Result.Dormant;
   finally
     TempBmp.Free;
     ThumbBmp.Free;
@@ -919,21 +916,47 @@ var
   i: Integer;
   Node: TJamBrowseNode;
   NewThumb: TBitmap;
+  Ratio: Double;
+  ThumbW, ThumbH, OffsetX, OffsetY: Integer;
+  bgColor: TColor;
+const
+  PaddingFactor = 0.95;
 begin
-  for i := 0 to jamListView.items.Count - 1 do
-  begin
-    Node := TJamBrowseNode(jamListView.items[i].data);
-    if not Assigned(Node) then
-      Continue;
+  bgColor := jamListView.Color;
 
-    NewThumb := GenerateThumbnail(Node.Orig, ThumbSize, jamListView.Color);
-    FreeAndNil(Node.Thumb);
-    Node.Thumb := NewThumb;
+  jamListView.BeginUpdate;
+  try
+    for i := 0 to jamListView.Items.Count - 1 do
+    begin
+      Node := TJamBrowseNode(jamListView.Items[i].data);
+      if not Assigned(Node) or not Assigned(Node.Orig) then
+        Continue;
 
-    jamListView.items[i].Invalidate(true); // Redraw only that item
+      // Fast inline resize — no StretchF, no TempBmp copy, just StretchDraw
+      Ratio := Min((ThumbSize * PaddingFactor) / Node.Orig.Width,
+        (ThumbSize * PaddingFactor) / Node.Orig.Height);
+      ThumbW := Round(Node.Orig.Width * Ratio);
+      ThumbH := Round(Node.Orig.Height * Ratio);
+
+      NewThumb := TBitmap.Create;
+      NewThumb.PixelFormat := pf24bit;
+      NewThumb.SetSize(ThumbSize, ThumbSize);
+      NewThumb.Canvas.Brush.Color := bgColor;
+      NewThumb.Canvas.FillRect(Rect(0, 0, ThumbSize, ThumbSize));
+
+      OffsetX := (ThumbSize - ThumbW) div 2;
+      OffsetY := (ThumbSize - ThumbH) div 2;
+      NewThumb.Canvas.StretchDraw(
+        Rect(OffsetX, OffsetY, OffsetX + ThumbW, OffsetY + ThumbH),
+        Node.Orig);
+
+      FreeAndNil(Node.Thumb);
+      Node.Thumb := NewThumb;
+    end;
+  finally
+    jamListView.EndUpdate;
   end;
 
-  // Optional: if using per-item invalidation above, you don't need this
   jamListView.Invalidate;
 end;
 
