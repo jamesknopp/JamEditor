@@ -610,6 +610,7 @@ begin
   // 3) pack pixel data into raw[hdrCount*16..] using ScanLine
   CanvasBitmap.PixelFormat := pf24bit;
   offset := hdrCount * 16;
+  {$R-}
   for row := 0 to heightVal - 1 do
   begin
     ScanPtr := CanvasBitmap.ScanLine[row];
@@ -621,6 +622,7 @@ begin
       Inc(offset);
     end;
   end;
+  {$R+}
 
   CanvasBitmap.Canvas.Unlock;
   // 3) write to disk: magic, counts, then RLE data

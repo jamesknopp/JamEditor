@@ -4,7 +4,7 @@ interface
 
 uses
   Winapi.Windows, System.SysUtils,
-  System.Classes, System.Threading, System.IOUtils, Vcl.Graphics, Vcl.Controls,
+  System.Classes, System.IOUtils, Vcl.Graphics, Vcl.Controls,
   Vcl.Forms, Vcl.StdCtrls, Vcl.ExtCtrls,
   Vcl.ComCtrls, System.StrUtils,
   VirtualTrees, VirtualTrees.DrawTree, VirtualTrees.Types,
@@ -153,6 +153,7 @@ type
     FPendingThumbnails: Integer;
     FLoadedThumbnails: Integer;
     FLoadGeneration: Integer;
+    FCurrentLoadPath: string;
 
     procedure LoadImagesFromFolderAsync(const Folder: string);
     procedure LoadImagesWorker(const Folder: string; Generation: Integer);
@@ -161,7 +162,8 @@ type
     function CanDisplay(const Name: String): Boolean;
     function GetDriveString(Index: Integer): string;
     function ReadAttributes(const Name: UnicodeString): Cardinal;
-    function GenerateThumbnail(srcBmp: TBitmap; maxSize: Integer): TBitmap;
+    function GenerateThumbnail(srcBmp: TBitmap; maxSize: Integer;
+      bgColor: TColor): TBitmap;
     procedure SortJams(i: Integer; order: Boolean);
 
     procedure RefreshDirectoryTree;
@@ -288,7 +290,8 @@ end;
 
 procedure TJamBrowserFrm.btnCancelClick(Sender: TObject);
 begin
-  cancelJob := true;
+  cancelJob := True;
+  FCurrentLoadPath := '';
 end;
 
 function TJamBrowserFrm.CanDisplay(const Name: string): Boolean;
@@ -491,7 +494,7 @@ begin
 end;
 
 function TJamBrowserFrm.GenerateThumbnail(srcBmp: TBitmap;
-  maxSize: Integer): TBitmap;
+  maxSize: Integer; bgColor: TColor): TBitmap;
 var
   TempBmp, ThumbBmp: TBitmap;
   RS: TResourceStream;
@@ -535,12 +538,15 @@ begin
     Result := TBitmap.Create;
     Result.PixelFormat := pf24bit;
     Result.SetSize(maxSize, maxSize);
-    Result.Canvas.Brush.Color := jamListView.Color;
+    Result.Canvas.Brush.Color := bgColor;
     Result.Canvas.FillRect(Rect(0, 0, maxSize, maxSize));
 
     OffsetX := (maxSize - ThumbW) div 2;
     OffsetY := (maxSize - ThumbH) div 2;
     Result.Canvas.Draw(OffsetX, OffsetY, ThumbBmp);
+
+    // Release GDI handle so it can be re-created on the main thread
+    Result.Dormant;
   finally
     TempBmp.Free;
     ThumbBmp.Free;
@@ -644,19 +650,16 @@ begin
 end;
 
 procedure TJamBrowserFrm.LoadImagesFromFolderAsync(const Folder: string);
-var
-  Gen: Integer;
 begin
-  // Cancel any running worker by bumping the generation counter
-  cancelJob := True;
+  // Don't re-trigger if we're already loading this folder
+  if SameText(Folder, FCurrentLoadPath) then
+    Exit;
+
+  // Cancel any running load by bumping the generation counter
   Inc(FLoadGeneration);
-  Gen := FLoadGeneration;
-  cancelJob := False;
-  TTask.Run(
-    procedure
-    begin
-      LoadImagesWorker(Folder, Gen)
-    end);
+  FCurrentLoadPath := Folder;
+
+  LoadImagesWorker(Folder, FLoadGeneration);
 end;
 
 procedure TJamBrowserFrm.LoadImagesWorker(const Folder: string; Generation: Integer);
@@ -672,22 +675,24 @@ var
   HWJamFile: THWJamFile;
   Thumb: TBitmap;
   Node: TJamBrowseNode;
+  Item: TEasyItem;
   jamTypeStr: string;
   numTexs: Integer;
   jamPal: TJamType;
   fileData: WIN32_FILE_ATTRIBUTE_DATA;
   SystemTime: TSystemTime;
   LocalFileTime: TFileTime;
-  LocalThumbSize: Integer;
 
   // Saved global state
   SavedPal: array [0 .. 255] of TRGB;
-  SavedRcr, SavedJip: Boolean;
-  SavedMaxW, SavedMaxH, SavedPalID: Integer;
+  SavedRcr, SavedJip, SavedGP2, SavedGP3, SavedHW: Boolean;
+  SavedLoaded, SavedIssues, SavedUndo, SavedGenPal, SavedModified: Boolean;
+  SavedGP2Livery, SavedRCRDraw, SavedTexSelected: Boolean;
+  SavedMaxW, SavedMaxH, SavedPalID, SavedSelTex: Integer;
 begin
   LocalFileList := TStringList.Create;
   try
-    // 1. Scan folder (background thread — fast)
+    // 1. Scan folder
     if FindFirst(Folder + '\*.*', faAnyFile, SR) = 0 then
     begin
       try
@@ -708,7 +713,7 @@ begin
     if LocalFileList.Count = 0 then
       Exit;
 
-    // 2. Save global state before we start mutating it
+    // 2. Save ALL global state before we start mutating it
     for i := 0 to 255 do
       SavedPal[i] := GPXPal[i];
     SavedRcr := boolRcrJam;
@@ -716,58 +721,77 @@ begin
     SavedMaxW := intJamMaxWidth;
     SavedMaxH := intJamMaxHeight;
     SavedPalID := intPaletteID;
+    SavedGP2 := boolGP2Jam;
+    SavedGP3 := boolGP3Jam;
+    SavedHW := boolHWJAM;
+    SavedLoaded := boolJamLoaded;
+    SavedIssues := boolJamIssues;
+    SavedUndo := boolUndo;
+    SavedGenPal := generatePal;
+    SavedModified := boolJamModified;
+    SavedGP2Livery := boolGP2Livery;
+    SavedRCRDraw := boolRCRDrawMode;
+    SavedTexSelected := boolTexSelected;
+    SavedSelTex := intSelectedTexture;
 
-    // 3. Init UI (main thread)
-    TThread.Synchronize(nil,
-      procedure
-      begin
-        jamListView.BeginUpdate;
-        try
-          jamListView.Items.Clear;
-          FileList.Assign(LocalFileList);
-        finally
-          jamListView.EndUpdate;
-        end;
-        ProgressBar.Max := LocalFileList.Count;
-        ProgressBar.Position := 0;
-        ProgressBar.Visible := True;
-        btnCancel.Visible := True;
-        jamLoading.Visible := True;
-        FPendingThumbnails := LocalFileList.Count;
-        FLoadedThumbnails := 0;
-        LocalThumbSize := ThumbSize;
-      end);
+    // 3. Init UI
+    jamListView.BeginUpdate;
+    try
+      jamListView.Items.Clear;
+      FileList.Assign(LocalFileList);
+    finally
+      jamListView.EndUpdate;
+    end;
+    ProgressBar.Max := LocalFileList.Count;
+    ProgressBar.Position := 0;
+    ProgressBar.Visible := True;
+    btnCancel.Visible := True;
+    jamLoading.Visible := True;
+    FPendingThumbnails := LocalFileList.Count;
+    FLoadedThumbnails := 0;
 
     try
-      // 4. Process each file (background thread does the heavy work)
+      // 4. Process each file on the main thread with ProcessMessages
+      //    for UI responsiveness between files
       for i := 0 to LocalFileList.Count - 1 do
       begin
+        // Let UI breathe — handle cancel clicks, repaints, scrolls
+        Application.ProcessMessages;
+
         if cancelJob or (FLoadGeneration <> Generation) then
           Break;
 
         FilePath := LocalFileList[i];
 
-        // Detect palette type (may show dialog, so run on main thread)
-        TThread.Synchronize(nil,
-          procedure
-          begin
-            jamPal := TJamPaletteDetector.Instance.Detect(FilePath, False);
-          end);
+        // Reset all JAM globals to clean state before each file.
+        // Prevents state leaking from one file to the next (e.g. RCR
+        // flags persisting from rcr1a into the non-RCR rcr1b).
+        boolRcrJam := False;
+        boolJipMode := False;
+        intJamMaxWidth := 0;
+        intJamMaxHeight := 0;
 
-        // Set palette for this file (background thread — no UI)
+        // Detect palette type
+        jamPal := TJamPaletteDetector.Instance.Detect(FilePath, True);
+
+        // Set palette for this file — default to GP2 if unrecognised
         case jamPal of
           jamGP2:
             for numTexs := 0 to 255 do
               GPXPal[numTexs] := Gp2Pal[numTexs];
-          jamGP3SW:
+          jamGP3SW, jamGP3HW:
             for numTexs := 0 to 255 do
               GPXPal[numTexs] := Gp3Pal[numTexs];
+        else
+          for numTexs := 0 to 255 do
+            GPXPal[numTexs] := Gp2Pal[numTexs];
         end;
 
-        // Load JAM and render thumbnail (background thread — heavy work)
+        // Load JAM and render thumbnail — wrapped in try/except so one
+        // bad file doesn't stop the entire browser from loading
         Thumb := nil;
         Node := nil;
-        try
+        try try
           if isHWJAM(FilePath) then
           begin
             HWJamFile := THWJamFile.Create;
@@ -797,18 +821,18 @@ begin
           if not Assigned(Thumb) then
             Continue;
 
-          // Build node (background thread)
+          // Build node
           Node := TJamBrowseNode.Create;
           Node.FileName := FilePath;
           Node.Orig := Thumb;
           Thumb := nil; // ownership transferred to Node
-          Node.Thumb := GenerateThumbnail(Node.Orig, LocalThumbSize);
+          Node.Thumb := GenerateThumbnail(Node.Orig, ThumbSize, jamListView.Color);
           Node.Height := Node.Orig.Height;
           Node.Width := Node.Orig.Width;
           Node.numTexs := numTexs;
           Node.jamType := jamTypeStr;
 
-          // Read file metadata (background thread — no UI)
+          // Read file metadata
           if GetFileAttributesEx(PChar(FilePath), GetFileExInfoStandard,
             @fileData) then
           begin
@@ -824,25 +848,30 @@ begin
             Node.dateModified := SystemTimeToDateTime(SystemTime);
           end;
 
-          // Add to UI (main thread)
-          TThread.Synchronize(nil,
-            procedure
-            var
-              Item: TEasyItem;
-            begin
-              Item := jamListView.Items.Add(Node);
-              Item.Caption := ExtractFileName(Node.FileName);
-              Item.Captions[1] := DateToStr(Node.dateModified);
-              Item.Captions[2] := FormatFileSize(Node.size);
-              Item.Captions[3] := IntToStr(Node.numTexs);
+          // Add to listview
+          Item := jamListView.Items.Add(Node);
+          Item.Caption := ExtractFileName(Node.FileName);
+          Item.Captions[1] := DateToStr(Node.dateModified);
+          Item.Captions[2] := FormatFileSize(Node.size);
+          Item.Captions[3] := IntToStr(Node.numTexs);
 
-              Inc(FLoadedThumbnails);
-              ProgressBar.Position := FLoadedThumbnails;
-              jamLoading.Caption := Format('Loading JAM %d of %d',
-                [FLoadedThumbnails, FPendingThumbnails]);
-            end);
+          Inc(FLoadedThumbnails);
+          ProgressBar.Position := FLoadedThumbnails;
+          jamLoading.Caption := Format('Loading JAM %d of %d',
+            [FLoadedThumbnails, FPendingThumbnails]);
+
           Node := nil; // ownership transferred to listview
 
+        except
+          // Skip files that fail to load — don't crash the browser
+          on E: Exception do
+          begin
+            Inc(FLoadedThumbnails);
+            ProgressBar.Position := FLoadedThumbnails;
+            jamLoading.Caption := Format('Loading JAM %d of %d',
+              [FLoadedThumbnails, FPendingThumbnails]);
+          end;
+        end;
         finally
           Thumb.Free;
           Node.Free;
@@ -850,7 +879,7 @@ begin
       end;
 
     finally
-      // 5. Restore global state (background thread)
+      // 5. Restore ALL global state
       for i := 0 to 255 do
         GPXPal[i] := SavedPal[i];
       boolRcrJam := SavedRcr;
@@ -858,17 +887,26 @@ begin
       intJamMaxWidth := SavedMaxW;
       intJamMaxHeight := SavedMaxH;
       intPaletteID := SavedPalID;
+      boolGP2Jam := SavedGP2;
+      boolGP3Jam := SavedGP3;
+      boolHWJAM := SavedHW;
+      boolJamLoaded := SavedLoaded;
+      boolJamIssues := SavedIssues;
+      boolUndo := SavedUndo;
+      generatePal := SavedGenPal;
+      boolJamModified := SavedModified;
+      boolGP2Livery := SavedGP2Livery;
+      boolRCRDrawMode := SavedRCRDraw;
+      boolTexSelected := SavedTexSelected;
+      intSelectedTexture := SavedSelTex;
 
-      // 6. Cleanup UI (main thread)
-      TThread.Synchronize(nil,
-        procedure
-        begin
-          ProgressBar.Visible := False;
-          jamLoading.Visible := False;
-          btnCancel.Visible := False;
-          cancelJob := False;
-          jamListView.Sort.SortAll;
-        end);
+      // 6. Cleanup UI
+      ProgressBar.Visible := False;
+      jamLoading.Visible := False;
+      btnCancel.Visible := False;
+      cancelJob := False;
+      FCurrentLoadPath := '';
+      jamListView.Sort.SortAll;
     end;
 
   finally
@@ -888,7 +926,7 @@ begin
     if not Assigned(Node) then
       Continue;
 
-    NewThumb := GenerateThumbnail(Node.Orig, ThumbSize);
+    NewThumb := GenerateThumbnail(Node.Orig, ThumbSize, jamListView.Color);
     FreeAndNil(Node.Thumb);
     Node.Thumb := NewThumb;
 

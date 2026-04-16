@@ -1122,6 +1122,7 @@ begin
       Palette := CreateGPxPal;
     end;
 
+    {$R-}
     for Y := 0 to H - 1 do
     begin
       rcrARow := FEntries[JamId].rcrA.ScanLine[Y];
@@ -1148,6 +1149,7 @@ begin
         Inc(bmpRow);
       end;
     end;
+    {$R+}
 
     FEntries[JamId].FRawTexture := ExtractRawTexture(Raw, X0, Y0, W, H, 512);
 
@@ -1210,6 +1212,7 @@ begin
 
     SetLength(FEntries[JamId].FRawTexture, W * H);
 
+    {$R-}
     for Y := 0 to H - 1 do
     begin
       bmpRow := bmp.ScanLine[Y];
@@ -1227,6 +1230,7 @@ begin
         bmpRow[X] := dst;
       end;
     end;
+    {$R+}
 
     Result := bmp;
   except
@@ -1329,6 +1333,7 @@ begin
 
     rawTex := FEntries[JamId].FRawTexture;
 
+    {$R-}
     for Y := 0 to H - 1 do
     begin
       texRow := jamTex.ScanLine[Y];
@@ -1346,6 +1351,7 @@ begin
         Inc(texRow);
       end;
     end;
+    {$R+}
 
     jamTex.Palette := CreateGPxPal;
     Result := jamTex;

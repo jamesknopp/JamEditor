@@ -4,7 +4,7 @@ interface
 
 uses
   System.SysUtils, System.Generics.Collections, System.IOUtils, System.JSON,
-  System.SyncObjs, Vcl.Dialogs, Vcl.Forms, System.UITypes, JamGeneral;
+  Vcl.Dialogs, Vcl.Forms, System.UITypes, JamGeneral;
 
 type
 
@@ -167,15 +167,9 @@ begin
 end;
 
 class function TJamPaletteDetector.Instance: TJamPaletteDetector;
-var
-  NewInstance: TJamPaletteDetector;
 begin
   if FInstance = nil then
-  begin
-    NewInstance := TJamPaletteDetector.Create;
-    if TInterlocked.CompareExchange<TJamPaletteDetector>(FInstance, NewInstance, nil) <> nil then
-      NewInstance.Free; // another thread won the race
-  end;
+    FInstance := TJamPaletteDetector.Create;
   Result := FInstance;
 end;
 

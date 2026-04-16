@@ -2301,6 +2301,7 @@ begin
   bmp.SetSize(width, height);
 
   Idx := 0;
+  {$R-}
   for Y := 0 to height - 1 do
   begin
     Row := bmp.ScanLine[Y];
@@ -2317,6 +2318,7 @@ begin
       Inc(Idx);
     end;
   end;
+  {$R+}
 
   Result := bmp;
 end;
