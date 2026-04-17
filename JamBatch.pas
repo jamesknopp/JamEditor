@@ -448,9 +448,12 @@ procedure TJamBatchForm.ConvertSingleItem(Item: TJamBatchItem;
   DoPalette: Boolean);
 // Handles one input/output type pair with the correct load/convert/save
 // pattern. Always frees its bitmap objects, even on exception.
+// Item.outputpath is the directory; Item.filename is the file name —
+// SaveToFile needs the full path, so we combine them here.
 var
   JamFile, OldJamFile: TJamFile;
   HWJamFile: THWJamFile;
+  outFile: string;
   x: integer;
 
   procedure ZeroPalettesIfRequested;
@@ -461,7 +464,11 @@ var
   end;
 
 begin
+  // Ensure the destination directory exists
   checkPath(Item.outputpath);
+
+  // Build the full output file path
+  outFile := TPath.Combine(Item.outputpath, Item.filename);
 
   // HW → SW/GP2: load HW, convert, save SW
   if Item.inputType = jamGP3HW then
@@ -472,7 +479,7 @@ begin
     try
       HWJamFile.LoadFromFile(Item.filepath);
       JamFile.ConvertHWJam(HWJamFile, Item.outputType = jamGP2);
-      JamFile.SaveToFile(Item.outputpath, False);
+      JamFile.SaveToFile(outFile, False);
     finally
       JamFile.Free;
       HWJamFile.Free;
@@ -488,7 +495,7 @@ begin
       HWJamFile := THWJamFile.Create;
       try
         HWJamFile.ConvertGpxJam(Item.filepath);
-        HWJamFile.SaveToFile(Item.outputpath);
+        HWJamFile.SaveToFile(outFile);
       finally
         HWJamFile.Free;
       end;
@@ -503,7 +510,7 @@ begin
         OldJamFile.LoadFromFile(Item.filepath, False);
         JamFile.ConvertGpxJam(OldJamFile, Item.outputType = jamGP2);
         ZeroPalettesIfRequested;
-        JamFile.SaveToFile(Item.outputpath, False);
+        JamFile.SaveToFile(outFile, False);
       finally
         JamFile.Free;
         OldJamFile.Free;
@@ -661,7 +668,7 @@ begin
       li.Caption := ExtractFileName(itm.filepath);
       li.SubItems.Add(GetJamType(itm.inputType));
       li.SubItems.Add(GetJamType(itm.outputType));
-      li.SubItems.Add(itm.outputpath + itm.filename);
+      li.SubItems.Add(TPath.Combine(itm.outputpath, itm.filename));
       li.SubItems.Add(IfThen(itm.processed, 'Done', 'Pending'));
       li.SubItems.Add(GetSimplifyOptions(itm.TextureOptions.Simplify));
       li.SubItems.Add(inttostr(itm.TextureOptions.Blur));
@@ -688,7 +695,7 @@ begin
   // SubItems[0] is column 1, SubItems[1] is column 2, etc.
   li.SubItems[0] := GetJamType(itm.inputType);
   li.SubItems[1] := GetJamType(itm.outputType);
-  li.SubItems[2] := itm.outputpath + '\' + itm.filename;
+  li.SubItems[2] := TPath.Combine(itm.outputpath, itm.filename);
   li.SubItems[3] := IfThen(itm.processed, 'Done', 'Pending');
   li.SubItems[4] := GetSimplifyOptions(itm.TextureOptions.Simplify);
   li.SubItems[5] := inttostr(itm.TextureOptions.Blur);
