@@ -7,13 +7,17 @@ uses
   System.Generics.Collections,
   System.Classes, Vcl.Dialogs, Vcl.Graphics,
   Vcl.Controls, Vcl.Forms, Vcl.StdCtrls, Vcl.NumberBox, Vcl.Samples.Spin,
-  System.Threading, Vcl.ExtCtrls, Vcl.ComCtrls, Vcl.ToolWin,
+  Vcl.ExtCtrls, Vcl.ComCtrls, Vcl.ToolWin,
   jamGeneral, jamPaletteDetector, jamSW, jamHW, System.types, strutils,
-  Vcl.Menus, generalhelpers;
+  Vcl.Menus, generalhelpers, System.Win.Registry, Winapi.ShellAPI;
 
 type
 
   TTextureSimpOptions = (quad, seed, mean, neighbour);
+
+  // Batch-run lifecycle state for each item. Drives the row colour
+  // and status text in the ListView.
+  TJamBatchStatus = (bsIdle, bsPending, bsProcessing, bsDone, bsFailed);
 
   TJamOptions = record
     Simplify: TTextureSimpOptions;
@@ -31,83 +35,106 @@ type
     inputType: TJamType;
     outputType: TJamType;
     TextureOptions: TJamOptions;
-    processed: boolean;
+    status: TJamBatchStatus;
     constructor Create(const aFile: string);
   end;
 
 type
   TJamBatchForm = class(TForm)
     panel: TPanel;
-    Label2: TLabel;
     Label1: TLabel;
+    Label2: TLabel;
     Label3: TLabel;
+    Label4: TLabel;
+    Label5: TLabel;
+    Label6: TLabel;
+    LabelOutputFormat: TLabel;
+    lblProgress: TLabel;
     cbSimplify: TComboBox;
+    cbOutputFormat: TComboBox;
     chkSimpPalette: TCheckBox;
     chkDoMatte: TCheckBox;
+    chkDoPalette: TCheckBox;
+    chkScanAllFolders: TCheckBox;
     seBlur: TNumberBox;
     seThreshold: TNumberBox;
-    chkDoPalette: TCheckBox;
     strJamFile: TEdit;
-    Label4: TLabel;
-    GroupBox1: TGroupBox;
     edtOutputPath: TEdit;
-    Label5: TLabel;
+    edtFilename: TEdit;
+    GroupBox1: TGroupBox;
+    GroupBoxTools: TGroupBox;
     btnBrowseOutput: TButton;
     btnRun: TButton;
-    Button4: TButton;
+    btnCancel: TButton;
     btnAddFile: TButton;
     btnDel: TButton;
-    lvBatch: TListView;
     btnScanFolder: TButton;
-    radioGP2: TRadioButton;
-    radioGP3: TRadioButton;
-    radioGP3HW: TRadioButton;
-    GroupBox2: TGroupBox;
+    btnConvertTrack: TButton;
+    lvBatch: TListView;
     Panel1: TPanel;
     Panel2: TPanel;
+    StatusBarPanel: TPanel;
     Splitter1: TSplitter;
+    pbBatch: TProgressBar;
     jamBatchPopup: TPopupMenu;
     AddFiles01: TMenuItem;
     AddScanFolder1: TMenuItem;
     N1: TMenuItem;
+    N2: TMenuItem;
     DeleteItems1: TMenuItem;
-    Label6: TLabel;
-    edtFilename: TEdit;
-    chkScanAllFolders: TCheckBox;
-    btnConvertTrack: TButton;
+    mnuOpenFolder: TMenuItem;
+    mnuRetryFailed: TMenuItem;
     openTrack: TOpenDialog;
     procedure btnAddFileClick(Sender: TObject);
     procedure btnScanFolderClick(Sender: TObject);
     procedure btnDelClick(Sender: TObject);
     procedure btnRunClick(Sender: TObject);
+    procedure btnCancelClick(Sender: TObject);
     procedure lvBatchSelectItem(Sender: TObject; Item: TListItem;
       Selected: boolean);
     procedure cbSimplifyChange(Sender: TObject);
+    procedure cbOutputFormatChange(Sender: TObject);
     procedure seThresholdChange(Sender: TObject);
     procedure seBlurChange(Sender: TObject);
     procedure edtOutputPathChange(Sender: TObject);
-    procedure rgOutputTypeClick(Sender: TObject);
     procedure chkSimpPaletteClick(Sender: TObject);
     procedure chkDoMatteClick(Sender: TObject);
     procedure chkDoPaletteClick(Sender: TObject);
     function GetJamType(jamType: TJamType): string;
     function GetSimplifyOptions(opts: TTextureSimpOptions): string;
-    procedure radioGP2Click(Sender: TObject);
-    procedure radioGP3Click(Sender: TObject);
-    procedure radioGP3HWClick(Sender: TObject);
     procedure lvBatchKeyDown(Sender: TObject; var Key: Word;
       Shift: TShiftState);
+    procedure lvBatchDblClick(Sender: TObject);
     procedure jamBatchPopupPopup(Sender: TObject);
     procedure lvBatchClick(Sender: TObject);
     procedure btnBrowseOutputClick(Sender: TObject);
+    procedure FormShow(Sender: TObject);
     procedure edtFilenameChange(Sender: TObject);
     procedure DeleteItems1Click(Sender: TObject);
     procedure btnConvertTrackClick(Sender: TObject);
+    procedure mnuOpenFolderClick(Sender: TObject);
+    procedure mnuRetryFailedClick(Sender: TObject);
+    procedure lvBatchCustomDrawItem(Sender: TCustomListView; Item: TListItem;
+      State: TCustomDrawState; var DefaultDraw: Boolean);
+    procedure lvBatchCustomDrawSubItem(Sender: TCustomListView;
+      Item: TListItem; SubItem: Integer; State: TCustomDrawState;
+      var DefaultDraw: Boolean);
 
   private
     // O(1) duplicate detection — paired with BatchList. Normalised lower-case
     // filepath → item. Kept in sync in AddBatchItem / btnDelClick / OnClear.
     FPathIndex: TDictionary<string, TJamBatchItem>;
+    // Batch progress counters (UI-thread only)
+    FBatchTotal: integer;
+    FBatchDone: integer;
+    FBatchFailed: integer;
+    // Set by btnCancelClick; read by ConvertJam between items to abort
+    // the run cleanly. ConvertJam loops on the main thread pumping messages,
+    // so the click handler and the loop both run on the UI thread — no
+    // interlock needed.
+    FCancelRequested: Boolean;
+    FBatchRunning: Boolean;
+    FLastRunSummary: string;
 
     procedure RefreshListView;
     procedure ConvertJam;
@@ -126,6 +153,22 @@ type
       OutputType: TJamType): string;
     function NormalisePath(const APath: string): string;
     procedure EnsurePathIndex;
+    procedure SetItemStatus(Item: TJamBatchItem; NewStatus: TJamBatchStatus);
+    procedure UpdateBatchProgress;
+    function StatusText(S: TJamBatchStatus): string;
+    procedure ClearCompletedItems;
+    procedure UpdateUIState;
+    // Remember last folder per dialog type (add-files, scan-folder, output)
+    // in the existing HKCU\Software\JKVFX\JamEditor key. Values are written
+    // immediately when the user picks a folder, so they persist even if the
+    // app is killed.
+    function LoadBatchFolder(const ValueName: string): string;
+    procedure SaveBatchFolder(const ValueName, Folder: string);
+    function OutputTypeFromComboIndex(Idx: Integer): TJamType;
+    function ComboIndexForOutputType(JT: TJamType): Integer;
+    procedure OpenFolderForItem(Item: TJamBatchItem);
+    function AnyFailed: Boolean;
+    function StatusColor(S: TJamBatchStatus): TColor;
   public
     destructor Destroy; override;
   end;
@@ -138,6 +181,10 @@ procedure InitBatchList;
 procedure FreeBatchList;
 
 implementation
+
+uses
+  mainform; // only for LoadJam on double-click — kept in implementation
+            // uses to avoid a circular unit reference
 
 {$R *.dfm}
 
@@ -157,7 +204,7 @@ begin
     doSimplePal := False;
     doSoftenMatte := False;
   end;
-  processed := False;
+  status := bsIdle;
 end;
 
 procedure InitBatchList;
@@ -242,10 +289,9 @@ end;
 
 procedure TJamBatchForm.jamBatchPopupPopup(Sender: TObject);
 begin
-  if lvBatch.SelCount > 0 then
-    DeleteItems1.Enabled := True
-  else
-    DeleteItems1.Enabled := False;
+  DeleteItems1.Enabled  := lvBatch.SelCount > 0;
+  mnuOpenFolder.Enabled := lvBatch.SelCount > 0;
+  mnuRetryFailed.Enabled := AnyFailed and not FBatchRunning;
 end;
 
 function TJamBatchForm.GetSelectedBatchItems: TArray<TJamBatchItem>;
@@ -273,9 +319,15 @@ begin
   try
     dlg.Filter := 'JAM files|*.jam;*.jip';
     dlg.Options := dlg.Options + [ofAllowMultiSelect];
+    dlg.InitialDir := LoadBatchFolder('BatchAddFilesPath');
     if dlg.Execute then
+    begin
+      ClearCompletedItems;
       for fn in dlg.Files do
         AddBatchItem(fn);
+      if dlg.Files.Count > 0 then
+        SaveBatchFolder('BatchAddFilesPath', ExtractFilePath(dlg.Files[0]));
+    end;
     RefreshListView;
   finally
     dlg.Free;
@@ -290,11 +342,13 @@ begin
   try
     dlg.Options := dlg.Options + [fdoPickFolders, fdoPathMustExist];
     dlg.Title := 'Select output folder';
+    dlg.DefaultFolder := LoadBatchFolder('BatchOutputPath');
     if dlg.Execute then
     begin
       edtOutputPath.Text := dlg.filename;
       edtOutputPath.SetFocus;
       ApplyDetailsToItems(GetSelectedBatchItems);
+      SaveBatchFolder('BatchOutputPath', dlg.filename);
     end;
   finally
     dlg.Free;
@@ -332,6 +386,154 @@ begin
   end;
 end;
 
+function TJamBatchForm.LoadBatchFolder(const ValueName: string): string;
+var
+  Reg: TRegistry;
+begin
+  Result := '';
+  Reg := TRegistry.Create(KEY_READ);
+  try
+    Reg.RootKey := HKEY_CURRENT_USER;
+    if Reg.OpenKeyReadOnly(baseKeyPath) then
+    try
+      if Reg.ValueExists(ValueName) then
+        Result := Reg.ReadString(ValueName);
+    finally
+      Reg.CloseKey;
+    end;
+  finally
+    Reg.Free;
+  end;
+  // Guard against stale paths pointing at folders that no longer exist.
+  if (Result <> '') and not DirectoryExists(Result) then
+    Result := '';
+end;
+
+procedure TJamBatchForm.SaveBatchFolder(const ValueName, Folder: string);
+var
+  Reg: TRegistry;
+begin
+  if Folder = '' then Exit;
+  Reg := TRegistry.Create(KEY_WRITE);
+  try
+    Reg.RootKey := HKEY_CURRENT_USER;
+    if Reg.OpenKey(baseKeyPath, True) then
+    try
+      Reg.WriteString(ValueName, Folder);
+    finally
+      Reg.CloseKey;
+    end;
+  finally
+    Reg.Free;
+  end;
+end;
+
+procedure SetChildrenEnabled(Parent: TWinControl; Enabled: Boolean);
+// VCL's Enabled-cascade works for input routing but doesn't force a visual
+// repaint through nested TPanels — their children can end up looking active
+// even when the outer GroupBox is disabled. Walk the tree and set Enabled
+// directly on every leaf TControl so each repaints in its disabled style.
+var
+  i: integer;
+  child: TControl;
+begin
+  for i := 0 to Parent.ControlCount - 1 do
+  begin
+    child := Parent.Controls[i];
+    child.Enabled := Enabled;
+    if child is TWinControl then
+      SetChildrenEnabled(TWinControl(child), Enabled);
+  end;
+end;
+
+procedure TJamBatchForm.UpdateUIState;
+// Centralises enable/disable rules so selection / list / status changes all
+// route through one place. Called by: selection, add, delete, clear,
+// radio-click, and SetItemStatus (so Run disables when all items finish).
+var
+  selCount, readyCount, swSelCount: integer;
+  i: integer;
+  itm: TJamBatchItem;
+  allSelectedAreSW: Boolean;
+begin
+  selCount := 0;
+  swSelCount := 0;
+  readyCount := 0;
+  for i := 0 to BatchList.Count - 1 do
+  begin
+    itm := BatchList[i];
+    // "Ready to convert" = anything that hasn't already succeeded. We keep
+    // bsFailed items eligible so the user can retry after fixing the cause.
+    if itm.status <> bsDone then
+      Inc(readyCount);
+  end;
+
+  // Selection-driven counts (walk the ListView, not BatchList — order may
+  // differ after sort).
+  for i := 0 to lvBatch.Items.Count - 1 do
+    if lvBatch.Items[i].Selected and (lvBatch.Items[i].Data <> nil) then
+    begin
+      Inc(selCount);
+      itm := TJamBatchItem(lvBatch.Items[i].Data);
+      if itm.outputType in [jamGP2, jamGP3SW] then
+        Inc(swSelCount);
+    end;
+  allSelectedAreSW := (selCount > 0) and (swSelCount = selCount);
+
+  // During a batch run we lock down edits entirely — the user can only
+  // watch progress or hit Cancel.
+  btnDel.Enabled           := (selCount > 0) and not FBatchRunning;
+  DeleteItems1.Enabled     := (selCount > 0) and not FBatchRunning;
+  btnAddFile.Enabled       := not FBatchRunning;
+  btnScanFolder.Enabled    := not FBatchRunning;
+  btnConvertTrack.Enabled  := not FBatchRunning;
+  edtOutputPath.Enabled    := (selCount > 0) and not FBatchRunning;
+  btnBrowseOutput.Enabled  := (selCount > 0) and not FBatchRunning;
+  edtFilename.Enabled      := (selCount = 1) and not FBatchRunning;
+  // Input JAM field is read-only but grey it out when selection is
+  // non-singular so it doesn't look like an editable field with no value.
+  strJamFile.Enabled       := selCount = 1;
+  cbOutputFormat.Enabled   := (selCount > 0) and not FBatchRunning;
+  // Palette controls only meaningful when converting to a software JAM.
+  // Cascade Enabled through the nested panel so every child greys out
+  // visually, not just logically.
+  GroupBox1.Enabled := allSelectedAreSW and not FBatchRunning;
+  SetChildrenEnabled(GroupBox1, allSelectedAreSW and not FBatchRunning);
+  btnRun.Enabled := (readyCount > 0) and not FBatchRunning;
+end;
+
+procedure TJamBatchForm.ClearCompletedItems;
+var
+  i: integer;
+  itm: TJamBatchItem;
+  removed: Boolean;
+begin
+  // Remove any items that finished successfully on the previous run so the
+  // list doesn't accumulate stale results. Failed items are preserved so the
+  // user can see what went wrong and retry.
+  if BatchList.Count = 0 then Exit;
+  EnsurePathIndex;
+  removed := False;
+  for i := BatchList.Count - 1 downto 0 do
+  begin
+    itm := BatchList[i];
+    if itm.status = bsDone then
+    begin
+      FPathIndex.Remove(NormalisePath(itm.filepath));
+      BatchList.Delete(i); // TObjectList owns → frees item
+      removed := True;
+    end;
+  end;
+  if removed then
+  begin
+    FBatchTotal := 0;
+    FBatchDone := 0;
+    FLastRunSummary := '';  // New run starts fresh — clear any prior summary
+    UpdateBatchProgress;
+    RefreshListView;
+  end;
+end;
+
 procedure TJamBatchForm.btnScanFolderClick(Sender: TObject);
 var
   dlg: TFileOpenDialog;
@@ -344,15 +546,18 @@ begin
   try
     dlg.Options := dlg.Options + [fdoPickFolders, fdoPathMustExist];
     dlg.Title := 'Select folder to scan for JAMs';
+    dlg.DefaultFolder := LoadBatchFolder('BatchScanFolderPath');
     if not dlg.Execute then Exit;
 
     Dir := dlg.filename;
+    SaveBatchFolder('BatchScanFolderPath', Dir);
     if chkScanAllFolders.Checked then
       opt := TSearchOption.soAllDirectories
     else
       opt := TSearchOption.soTopDirectoryOnly;
 
     Files := TDirectory.GetFiles(Dir, '*.jam', opt);
+    ClearCompletedItems;
     for f in Files do
       AddBatchItem(f);
 
@@ -393,10 +598,12 @@ end;
 
 procedure TJamBatchForm.lvBatchClick(Sender: TObject);
 begin
-  if lvBatch.SelCount > 0 then
-    btnDel.Enabled := True
-  else
-    btnDel.Enabled := False;
+  UpdateUIState;
+end;
+
+procedure TJamBatchForm.FormShow(Sender: TObject);
+begin
+  UpdateUIState;
 end;
 
 procedure TJamBatchForm.lvBatchKeyDown(Sender: TObject; var Key: Word;
@@ -438,10 +645,7 @@ begin
     sel.Free;
   end;
 
-  if lvBatch.SelCount > 0 then
-    btnDel.Enabled := True
-  else
-    btnDel.Enabled := False;
+  UpdateUIState;
 end;
 
 procedure TJamBatchForm.ConvertSingleItem(Item: TJamBatchItem;
@@ -454,9 +658,10 @@ var
   JamFile, OldJamFile: TJamFile;
   HWJamFile: THWJamFile;
   outFile: string;
-  x: integer;
 
   procedure ZeroPalettesIfRequested;
+  var
+    x: Integer;
   begin
     if not DoPalette then Exit;
     for x := 0 to JamFile.FEntries.Count - 1 do
@@ -520,49 +725,115 @@ begin
 end;
 
 procedure TJamBatchForm.ConvertJam;
-// Snapshot BatchList, process each item on a background thread. The
-// snapshot is a local var, not a global. Per-item UI updates are marshalled
-// to the main thread via TThread.Queue so the batch keeps running and
-// doesn't race with VCL.
+// Synchronous main-thread loop. The HW->SW path uses VCL TBitmap/GDI BitBlt
+// which isn't thread-safe (GDI DCs are thread-affine), so running on a
+// worker thread produced ERROR_INVALID_HANDLE from BitBlt. Converting
+// here and pumping messages between items keeps the UI responsive without
+// touching GDI off-thread.
 var
+  pendingList: TList<TJamBatchItem>;
   items: TArray<TJamBatchItem>;
   doPalette: Boolean;
+  it, current: TJamBatchItem;
+  i, j, succeeded: integer;
+  ok: Boolean;
 begin
   if BatchList.Count = 0 then Exit;
-  items := BatchList.ToArray;
+
+  // Build the ready-to-convert subset. Items that already succeeded stay
+  // bsDone; failed items get another shot.
+  pendingList := TList<TJamBatchItem>.Create;
+  try
+    for it in BatchList do
+      if it.status <> bsDone then
+        pendingList.Add(it);
+    items := pendingList.ToArray;
+  finally
+    pendingList.Free;
+  end;
+  if Length(items) = 0 then Exit;
+
   doPalette := chkDoPalette.Checked;
 
-  TTask.Run(
-    procedure
-    var
-      i: integer;
-      it: TJamBatchItem;
+  for it in items do
+    it.status := bsPending;
+  FBatchTotal := Length(items);
+  FBatchDone := 0;
+  FBatchFailed := 0;
+  FCancelRequested := False;
+  FBatchRunning := True;
+  FLastRunSummary := '';
+  UpdateBatchProgress;
+  RefreshListView;
+  btnCancel.Enabled := True;
+  btnRun.Enabled := False;
+
+  // Main-thread loop. VCL/GDI code in the HW->SW conversion path (notably
+  // THWJamFile.DrawSingleTexture's BitBlt) isn't thread-safe; running here
+  // avoids ERROR_INVALID_HANDLE / silent BitBlt failures that appeared
+  // under TTask. Application.ProcessMessages keeps the form responsive so
+  // Cancel and redraws still work.
+  try
+    for i := 0 to High(items) do
     begin
-      for i := 0 to High(items) do
+      // Pump the message queue so clicks on Cancel get through and the
+      // ListView can repaint between items.
+      Application.ProcessMessages;
+      if FCancelRequested then
       begin
-        it := items[i];
-        try
-          ConvertSingleItem(it, doPalette);
-          it.processed := True;
-        except
-          on E: Exception do
-          begin
-            // Mark as not-processed; continue with remaining files
-            it.processed := False;
-            OutputDebugString(PChar(Format(
-              'Batch: conversion failed for %s: %s',
-              [it.filepath, E.Message])));
-          end;
-        end;
-        // Marshal the UI update to the main thread — non-blocking so the
-        // background batch doesn't stall on each Queue call.
-        TThread.Queue(nil,
-          procedure
-          begin
-            OnItemProcessed(it);
-          end);
+        // Reset any still-pending items back to idle so they're not
+        // stranded showing "Pending" when the run stops early.
+        for j := i to High(items) do
+          if items[j].status = bsPending then
+            SetItemStatus(items[j], bsIdle);
+        Break;
       end;
-    end);
+
+      current := items[i];
+      SetItemStatus(current, bsProcessing);
+      // Force a repaint before the long call so the user sees which item
+      // is in flight.
+      Application.ProcessMessages;
+
+      ok := False;
+      try
+        ConvertSingleItem(current, doPalette);
+        ok := True;
+      except
+        on E: Exception do
+          OutputDebugString(PChar(Format(
+            'Batch: conversion failed for %s: %s',
+            [current.filepath, E.Message])));
+      end;
+
+      if ok then
+        SetItemStatus(current, bsDone)
+      else
+      begin
+        SetItemStatus(current, bsFailed);
+        Inc(FBatchFailed);
+      end;
+      Inc(FBatchDone);
+      UpdateBatchProgress;
+    end;
+  finally
+    FBatchRunning := False;
+    btnCancel.Enabled := False;
+    succeeded := FBatchDone - FBatchFailed;
+    if FCancelRequested then
+      FLastRunSummary := Format('Cancelled: %d / %d done',
+        [FBatchDone, FBatchTotal])
+    else if FBatchFailed > 0 then
+      FLastRunSummary := Format('Finished: %d ok, %d failed',
+        [succeeded, FBatchFailed])
+    else
+      FLastRunSummary := Format('Finished: %d / %d ok',
+        [succeeded, FBatchTotal]);
+    pbBatch.Visible := False;
+    lblProgress.Visible := True;
+    lblProgress.Caption := FLastRunSummary;
+    UpdateUIState;
+  end;
 end;
 
 procedure TJamBatchForm.DeleteItems1Click(Sender: TObject);
@@ -581,30 +852,112 @@ end;
 
 procedure TJamBatchForm.btnRunClick(Sender: TObject);
 begin
-  // ConvertJam internally launches its own TTask; don't double-wrap.
   ConvertJam;
 end;
 
-procedure TJamBatchForm.radioGP2Click(Sender: TObject);
+procedure TJamBatchForm.btnCancelClick(Sender: TObject);
 begin
-  radioGP3.Checked := False;
-  radioGP3HW.Checked := False;
-  ApplyDetailsToItems(GetSelectedBatchItems);
+  // Signal the worker loop to stop between items. Current item finishes.
+  FCancelRequested := True;
+  btnCancel.Enabled := False;
+  lblProgress.Caption := lblProgress.Caption + ' — cancelling...';
 end;
 
-procedure TJamBatchForm.radioGP3Click(Sender: TObject);
+procedure TJamBatchForm.OpenFolderForItem(Item: TJamBatchItem);
+var
+  folder: string;
 begin
-  radioGP2.Checked := False;
-  radioGP3HW.Checked := False;
-  ApplyDetailsToItems(GetSelectedBatchItems);
-
+  if Item = nil then Exit;
+  folder := ExtractFilePath(Item.filepath);
+  if (folder = '') or not DirectoryExists(folder) then Exit;
+  ShellExecute(Handle, 'open', PChar(folder), nil, nil, SW_SHOWNORMAL);
 end;
 
-procedure TJamBatchForm.radioGP3HWClick(Sender: TObject);
+procedure TJamBatchForm.mnuOpenFolderClick(Sender: TObject);
+var
+  sel: TArray<TJamBatchItem>;
 begin
-  radioGP2.Checked := False;
-  radioGP3.Checked := False;
+  sel := GetSelectedBatchItems;
+  if Length(sel) = 0 then Exit;
+  // For multi-select, just open the first distinct folder. Users rarely
+  // want many Explorer windows to fire at once.
+  OpenFolderForItem(sel[0]);
+end;
+
+procedure TJamBatchForm.mnuRetryFailedClick(Sender: TObject);
+// Flip every bsFailed item back to bsIdle so the next Run Batch picks
+// them up. ConvertJam already ignores bsDone items so this is all we need.
+var
+  itm: TJamBatchItem;
+  any: Boolean;
+begin
+  any := False;
+  for itm in BatchList do
+    if itm.status = bsFailed then
+    begin
+      itm.status := bsIdle;
+      any := True;
+    end;
+  if any then
+  begin
+    RefreshListView;
+    lvBatch.Invalidate;
+  end;
+end;
+
+function TJamBatchForm.AnyFailed: Boolean;
+var
+  itm: TJamBatchItem;
+begin
+  for itm in BatchList do
+    if itm.status = bsFailed then Exit(True);
+  Result := False;
+end;
+
+procedure TJamBatchForm.lvBatchDblClick(Sender: TObject);
+// Double-click loads the clicked JAM into the main editor window so the
+// user can inspect/edit it before (or instead of) converting. The main
+// form's LoadJam handles both HW and SW formats internally.
+var
+  sel: TArray<TJamBatchItem>;
+  path: string;
+begin
+  sel := GetSelectedBatchItems;
+  if Length(sel) = 0 then Exit;
+  path := sel[0].filepath;
+  if not FileExists(path) then Exit;
+  FormMain.LoadJam(path);
+  // Bring the main window forward so the user sees the loaded JAM. The
+  // batch dialog stays open behind it — user can keep scrolling.
+  FormMain.BringToFront;
+end;
+
+procedure TJamBatchForm.cbOutputFormatChange(Sender: TObject);
+begin
   ApplyDetailsToItems(GetSelectedBatchItems);
+  UpdateUIState;
+end;
+
+function TJamBatchForm.OutputTypeFromComboIndex(Idx: Integer): TJamType;
+begin
+  case Idx of
+    0: Result := jamGP2;
+    1: Result := jamGP3SW;
+    2: Result := jamGP3HW;
+  else
+    Result := jamGP3SW;
+  end;
+end;
+
+function TJamBatchForm.ComboIndexForOutputType(JT: TJamType): Integer;
+begin
+  case JT of
+    jamGP2:   Result := 0;
+    jamGP3SW: Result := 1;
+    jamGP3HW: Result := 2;
+  else
+    Result := -1;
+  end;
 end;
 
 procedure TJamBatchForm.OnItemProcessed(Item: TJamBatchItem);
@@ -628,6 +981,95 @@ begin
       Exit;
     end;
   end;
+end;
+
+function TJamBatchForm.StatusText(S: TJamBatchStatus): string;
+// A leading glyph gives the status a visual anchor inside the cell, on top
+// of the full-row background colour. Unicode bullets render fine in Segoe
+// UI on every supported Windows version.
+begin
+  case S of
+    bsIdle:       Result := #$25CB + '  Ready';         // white circle
+    bsPending:    Result := #$25CF + '  Pending';       // black circle
+    bsProcessing: Result := #$25D0 + '  Processing...'; // half circle
+    bsDone:       Result := #$2714 + '  Done';          // check mark
+    bsFailed:     Result := #$2716 + '  Failed';        // cross
+  else
+    Result := '';
+  end;
+end;
+
+procedure TJamBatchForm.SetItemStatus(Item: TJamBatchItem;
+  NewStatus: TJamBatchStatus);
+// Called on the main thread. Updates the item's status, the
+// corresponding ListView row, and the progress indicators.
+begin
+  if Item = nil then Exit;
+  Item.status := NewStatus;
+  UpdateItemRow(Item);
+  lvBatch.Invalidate; // force a redraw so the background colour updates
+  UpdateUIState;      // Run button state depends on how many remain ready
+end;
+
+procedure TJamBatchForm.UpdateBatchProgress;
+// Main thread only. Refreshes the progress bar + count label.
+begin
+  if FBatchTotal <= 0 then
+  begin
+    pbBatch.Position := 0;
+    pbBatch.Visible := False;
+    // Keep last-run summary visible between runs (ConvertJam sets it in
+    // FLastRunSummary). Only hide entirely if we have neither.
+    if FLastRunSummary <> '' then
+    begin
+      lblProgress.Visible := True;
+      lblProgress.Caption := FLastRunSummary;
+    end
+    else
+      lblProgress.Visible := False;
+    Exit;
+  end;
+  pbBatch.Max := FBatchTotal;
+  pbBatch.Position := FBatchDone;
+  pbBatch.Visible := True;
+  lblProgress.Visible := True;
+  lblProgress.Caption := Format('%d / %d', [FBatchDone, FBatchTotal]);
+end;
+
+function TJamBatchForm.StatusColor(S: TJamBatchStatus): TColor;
+// Row background colours — slightly more saturated than the original pastels
+// so status reads at a glance down a long list.
+begin
+  case S of
+    bsPending:    Result := $00BDEDFF; // amber (peach)
+    bsProcessing: Result := $00F0D088; // soft blue
+    bsDone:       Result := $00A8F0A8; // green
+    bsFailed:     Result := $00A8A8F0; // pink/red
+  else
+    Result := clWindow;                // bsIdle: default row background
+  end;
+end;
+
+procedure TJamBatchForm.lvBatchCustomDrawItem(Sender: TCustomListView;
+  Item: TListItem; State: TCustomDrawState; var DefaultDraw: Boolean);
+// Per-row background colour based on the item's batch status.
+var
+  itm: TJamBatchItem;
+begin
+  DefaultDraw := True;
+  if Item.Data = nil then Exit;
+  itm := TJamBatchItem(Item.Data);
+  Sender.Canvas.Brush.Color := StatusColor(itm.status);
+end;
+
+procedure TJamBatchForm.lvBatchCustomDrawSubItem(Sender: TCustomListView;
+  Item: TListItem; SubItem: Integer; State: TCustomDrawState;
+  var DefaultDraw: Boolean);
+// Row colour is the primary status signal; the bullet prefix in StatusText
+// reinforces it for accessibility. Nothing extra to draw per subitem — we
+// keep the handler registered in case we add per-column styling later.
+begin
+  DefaultDraw := True;
 end;
 
 function TJamBatchForm.GetJamType(jamType: TJamType): string;
@@ -669,7 +1111,7 @@ begin
       li.SubItems.Add(GetJamType(itm.inputType));
       li.SubItems.Add(GetJamType(itm.outputType));
       li.SubItems.Add(TPath.Combine(itm.outputpath, itm.filename));
-      li.SubItems.Add(IfThen(itm.processed, 'Done', 'Pending'));
+      li.SubItems.Add(StatusText(itm.status));
       li.SubItems.Add(GetSimplifyOptions(itm.TextureOptions.Simplify));
       li.SubItems.Add(inttostr(itm.TextureOptions.Blur));
       li.SubItems.Add(inttostr(itm.TextureOptions.simplifyThresh));
@@ -681,6 +1123,7 @@ begin
   finally
     lvBatch.Items.EndUpdate;
   end;
+  UpdateUIState;
 end;
 
 procedure TJamBatchForm.UpdateListViewItem(li: TListItem);
@@ -696,7 +1139,7 @@ begin
   li.SubItems[0] := GetJamType(itm.inputType);
   li.SubItems[1] := GetJamType(itm.outputType);
   li.SubItems[2] := TPath.Combine(itm.outputpath, itm.filename);
-  li.SubItems[3] := IfThen(itm.processed, 'Done', 'Pending');
+  li.SubItems[3] := StatusText(itm.status);
   li.SubItems[4] := GetSimplifyOptions(itm.TextureOptions.Simplify);
   li.SubItems[5] := inttostr(itm.TextureOptions.Blur);
   li.SubItems[6] := inttostr(itm.TextureOptions.simplifyThresh);
@@ -719,11 +1162,6 @@ begin
   end;
 end;
 
-procedure TJamBatchForm.rgOutputTypeClick(Sender: TObject);
-begin
-  ApplyDetailsToItems(GetSelectedBatchItems);
-end;
-
 procedure TJamBatchForm.seBlurChange(Sender: TObject);
 begin
   ApplyDetailsToItems(GetSelectedBatchItems);
@@ -739,7 +1177,6 @@ procedure TJamBatchForm.PopulateDetails(const Items: TArray<TJamBatchItem>);
 var
   single: boolean;
   jamItem: TJamBatchItem;
-  x: integer;
 begin
   single := Length(Items) = 1;
   if single then
@@ -757,15 +1194,9 @@ begin
 
   // OutputType
   if single then
-  begin
-    x := Ord(jamItem.outputType);
-    if x = 0 then
-      radioGP2.Checked := True;
-    if x = 1 then
-      radioGP3.Checked := True;
-    if x = 2 then
-      radioGP3HW.Checked := True;
-  end;
+    cbOutputFormat.ItemIndex := ComboIndexForOutputType(jamItem.outputType)
+  else
+    cbOutputFormat.ItemIndex := -1;
 
   // texture options...
   if single then
@@ -807,12 +1238,8 @@ begin
     if edtFilename.Focused then
       jamItem.filename := edtFilename.Text;
 
-    if radioGP2.Focused and radioGP2.Checked then
-      jamItem.outputType := jamGP2;
-    if radioGP3.Focused and radioGP3.Checked then
-      jamItem.outputType := jamGP3SW;
-    if radioGP3HW.Focused and radioGP3HW.Checked then
-      jamItem.outputType := jamGP3HW;
+    if cbOutputFormat.Focused and (cbOutputFormat.ItemIndex >= 0) then
+      jamItem.outputType := OutputTypeFromComboIndex(cbOutputFormat.ItemIndex);
 
     if cbSimplify.Focused then
       jamItem.TextureOptions.Simplify :=
