@@ -105,26 +105,34 @@ type
     procedure btnConvertTrackClick(Sender: TObject);
 
   private
-    // FDat: TGP3Track;
+    // O(1) duplicate detection — paired with BatchList. Normalised lower-case
+    // filepath → item. Kept in sync in AddBatchItem / btnDelClick / OnClear.
+    FPathIndex: TDictionary<string, TJamBatchItem>;
+
     procedure RefreshListView;
-    procedure ConvertJam();
+    procedure ConvertJam;
+    procedure ConvertSingleItem(Item: TJamBatchItem; DoPalette: Boolean);
     procedure UpdateListViewItem(li: TListItem);
+    procedure UpdateItemRow(Item: TJamBatchItem);
     procedure RefreshSelectedItems;
     procedure PopulateDetails(const Items: TArray<TJamBatchItem>);
     procedure ApplyDetailsToItems(const Items: TArray<TJamBatchItem>);
     procedure OnItemProcessed(Item: TJamBatchItem);
     function GetSelectedBatchItems: TArray<TJamBatchItem>;
-    function ItemExists(const APath: string): boolean;
+    function ItemExists(const APath: string): Boolean;
+    function AddBatchItem(const FilePath: string): TJamBatchItem;
+    function DefaultOutputType(InputType: TJamType): TJamType;
+    function DefaultOutputPath(const SourcePath: string;
+      OutputType: TJamType): string;
+    function NormalisePath(const APath: string): string;
+    procedure EnsurePathIndex;
   public
-    { Public declarations }
+    destructor Destroy; override;
   end;
 
 var
   JamBatchForm: TJamBatchForm;
   BatchList: TObjectList<TJamBatchItem>;
-  tempDir: string;
-  updateDir: boolean;
-  tmpArr: TArray<TJamBatchItem>;
 
 procedure InitBatchList;
 procedure FreeBatchList;
@@ -162,20 +170,74 @@ begin
   BatchList.Free;
 end;
 
-function TJamBatchForm.ItemExists(const APath: string): boolean;
+destructor TJamBatchForm.Destroy;
+begin
+  FreeAndNil(FPathIndex);
+  inherited;
+end;
+
+function TJamBatchForm.NormalisePath(const APath: string): string;
+begin
+  Result := ExpandFileName(APath).ToLower;
+end;
+
+procedure TJamBatchForm.EnsurePathIndex;
 var
   itm: TJamBatchItem;
-  normNew, normExisting: string;
 begin
-
-  normNew := ExpandFileName(APath).ToLower;
+  if FPathIndex <> nil then Exit;
+  FPathIndex := TDictionary<string, TJamBatchItem>.Create;
+  // Populate from any items already in BatchList (defensive)
   for itm in BatchList do
-  begin
-    normExisting := ExpandFileName(itm.filepath).ToLower;
-    if normExisting = normNew then
-      Exit(True);
+    FPathIndex.AddOrSetValue(NormalisePath(itm.filepath), itm);
+end;
+
+function TJamBatchForm.ItemExists(const APath: string): Boolean;
+begin
+  EnsurePathIndex;
+  Result := FPathIndex.ContainsKey(NormalisePath(APath));
+end;
+
+function TJamBatchForm.DefaultOutputType(InputType: TJamType): TJamType;
+begin
+  // "Convert to the opposite" default: SW → HW, HW → SW, GP2 → GP3SW
+  case InputType of
+    jamGP3SW: Result := jamGP3HW;
+    jamGP3HW: Result := jamGP3SW;
+    jamGP2:   Result := jamGP3SW;
+  else
+    Result := InputType;
   end;
-  Result := False;
+end;
+
+function TJamBatchForm.DefaultOutputPath(const SourcePath: string;
+  OutputType: TJamType): string;
+var
+  dir: string;
+begin
+  dir := ExtractFilePath(SourcePath);
+  // GP3 SW and HW share the same pair of Gp3Jams / Gp3JamsH folders;
+  // flip between them so output lands in the "other" folder by default.
+  if OutputType in [jamGP3SW, jamGP3HW] then
+    Result := ToggleGP3JamsFolder(dir)
+  else
+    Result := dir;
+end;
+
+function TJamBatchForm.AddBatchItem(const FilePath: string): TJamBatchItem;
+begin
+  EnsurePathIndex;
+  if FPathIndex.ContainsKey(NormalisePath(FilePath)) then
+    Exit(nil);
+
+  Result := TJamBatchItem.Create(FilePath);
+  Result.inputType := TJamPaletteDetector.Instance.Detect(FilePath, True);
+  Result.outputType := DefaultOutputType(Result.inputType);
+  Result.filename := ExtractFileName(FilePath);
+  Result.outputpath := DefaultOutputPath(FilePath, Result.outputType);
+
+  BatchList.Add(Result);
+  FPathIndex.Add(NormalisePath(FilePath), Result);
 end;
 
 procedure TJamBatchForm.jamBatchPopupPopup(Sender: TObject);
@@ -205,8 +267,7 @@ end;
 procedure TJamBatchForm.btnAddFileClick(Sender: TObject);
 var
   dlg: TOpenDialog;
-  fn, dironly: string;
-  itm: TJamBatchItem;
+  fn: string;
 begin
   dlg := TOpenDialog.Create(nil);
   try
@@ -214,26 +275,7 @@ begin
     dlg.Options := dlg.Options + [ofAllowMultiSelect];
     if dlg.Execute then
       for fn in dlg.Files do
-      begin
-        if ItemExists(fn) then
-          Continue; // skip duplicates
-        itm := TJamBatchItem.Create(fn);
-        // detect palette
-
-        itm.inputType := TJamPaletteDetector.Instance.Detect(fn, True);
-        itm.outputType := itm.inputType;
-
-        itm.filename := ExtractFileName(fn);
-
-        dironly := extractfilepath(fn);
-
-        if (itm.outputType = jamGP3SW) or (itm.outputType = jamGP3HW) then
-          itm.outputpath := ToggleGP3JamsFolder(dironly)
-        else
-          itm.outputpath := dironly;
-
-        BatchList.Add(itm);
-      end;
+        AddBatchItem(fn);
     RefreshListView;
   finally
     dlg.Free;
@@ -250,10 +292,8 @@ begin
     dlg.Title := 'Select output folder';
     if dlg.Execute then
     begin
-      tempDir := dlg.filename; // actually the folder
-      edtOutputPath.Text := tempDir;
+      edtOutputPath.Text := dlg.filename;
       edtOutputPath.SetFocus;
-      updateDir := True;
       ApplyDetailsToItems(GetSelectedBatchItems);
     end;
   finally
@@ -265,26 +305,31 @@ procedure TJamBatchForm.btnDelClick(Sender: TObject);
 var
   i: integer;
   idxs: TList<integer>;
+  itm: TJamBatchItem;
 begin
-  if lvBatch.SelCount > 0 then
-    if MessageDlg('Remove the selected item(s)?', mtConfirmation, [mbYes, mbNo],
-      0) = mrYes then
+  if lvBatch.SelCount = 0 then Exit;
+  if MessageDlg('Remove the selected item(s)?', mtConfirmation, [mbYes, mbNo],
+    0) <> mrYes then
+    Exit;
+
+  EnsurePathIndex;
+  idxs := TList<integer>.Create;
+  try
+    for i := 0 to lvBatch.Items.Count - 1 do
+      if lvBatch.Items[i].Selected then
+        idxs.Add(i);
+    idxs.Sort;
+    // remove highest to lowest so preceding indexes stay valid
+    for i := idxs.Count - 1 downto 0 do
     begin
-      idxs := TList<integer>.Create;
-      try
-        // gather selected indexes
-        for i := 0 to lvBatch.Items.Count - 1 do
-          if lvBatch.Items[i].Selected then
-            idxs.Add(i);
-        idxs.Sort;
-        // remove highest to lowest
-        for i := idxs.Count - 1 downto 0 do
-          BatchList.Delete(idxs[i]);
-        RefreshListView;
-      finally
-        idxs.Free;
-      end;
+      itm := BatchList[idxs[i]];
+      FPathIndex.Remove(NormalisePath(itm.filepath));
+      BatchList.Delete(idxs[i]); // TObjectList owns → frees item
     end;
+    RefreshListView;
+  finally
+    idxs.Free;
+  end;
 end;
 
 procedure TJamBatchForm.btnScanFolderClick(Sender: TObject);
@@ -293,45 +338,25 @@ var
   Dir: string;
   Files: TArray<string>;
   f: string;
-  itm: TJamBatchItem;
+  opt: TSearchOption;
 begin
   dlg := TFileOpenDialog.Create(nil);
   try
     dlg.Options := dlg.Options + [fdoPickFolders, fdoPathMustExist];
     dlg.Title := 'Select folder to scan for JAMs';
-    if dlg.Execute then
-    begin
-      Dir := dlg.filename; // actually the folder
-      if chkScanAllFolders.Checked then
-        Files := TDirectory.GetFiles(Dir, '*.jam',
-          TSearchOption.soAllDirectories)
-      else
-        Files := TDirectory.GetFiles(Dir, '*.jam',
-          TSearchOption.soTopDirectoryOnly);
-      for f in Files do
-      begin
-        if ItemExists(f) then
-          Continue; // skip duplicates
-        itm := TJamBatchItem.Create(f);
+    if not dlg.Execute then Exit;
 
-        itm.inputType := TJamPaletteDetector.Instance.Detect(f, True);
+    Dir := dlg.filename;
+    if chkScanAllFolders.Checked then
+      opt := TSearchOption.soAllDirectories
+    else
+      opt := TSearchOption.soTopDirectoryOnly;
 
-        if itm.inputType = jamGP3SW then
-          itm.outputType := jamGP3HW;
+    Files := TDirectory.GetFiles(Dir, '*.jam', opt);
+    for f in Files do
+      AddBatchItem(f);
 
-        if itm.inputType = jamGP3HW then
-          itm.outputType := jamGP3SW;
-
-        if itm.inputType = jamGP2 then
-          itm.outputType := jamGP3SW;
-
-        itm.outputpath := ToggleGP3JamsFolder(f);
-        itm.filename := ExtractFileName(f);
-
-        BatchList.Add(itm);
-      end;
-      RefreshListView;
-    end;
+    RefreshListView;
   finally
     dlg.Free;
   end;
@@ -419,163 +444,118 @@ begin
     btnDel.Enabled := False;
 end;
 
-procedure TJamBatchForm.ConvertJam();
+procedure TJamBatchForm.ConvertSingleItem(Item: TJamBatchItem;
+  DoPalette: Boolean);
+// Handles one input/output type pair with the correct load/convert/save
+// pattern. Always frees its bitmap objects, even on exception.
+var
+  JamFile, OldJamFile: TJamFile;
+  HWJamFile: THWJamFile;
+  x: integer;
+
+  procedure ZeroPalettesIfRequested;
+  begin
+    if not DoPalette then Exit;
+    for x := 0 to JamFile.FEntries.Count - 1 do
+      JamFile.ZeroPalette(x);
+  end;
+
 begin
+  checkPath(Item.outputpath);
 
-  tmpArr := BatchList.ToArray;
+  // HW → SW/GP2: load HW, convert, save SW
+  if Item.inputType = jamGP3HW then
+  begin
+    if not (Item.outputType in [jamGP3SW, jamGP2]) then Exit;
+    JamFile := TJamFile.Create;
+    HWJamFile := THWJamFile.Create;
+    try
+      HWJamFile.LoadFromFile(Item.filepath);
+      JamFile.ConvertHWJam(HWJamFile, Item.outputType = jamGP2);
+      JamFile.SaveToFile(Item.outputpath, False);
+    finally
+      JamFile.Free;
+      HWJamFile.Free;
+    end;
+    Exit;
+  end;
 
-  //
-  TTask.run(
+  // GP2 / GP3SW source — two sub-paths: → SW (with palette option) or → HW
+  if Item.inputType in [jamGP2, jamGP3SW] then
+  begin
+    if Item.outputType = jamGP3HW then
+    begin
+      HWJamFile := THWJamFile.Create;
+      try
+        HWJamFile.ConvertGpxJam(Item.filepath);
+        HWJamFile.SaveToFile(Item.outputpath);
+      finally
+        HWJamFile.Free;
+      end;
+      Exit;
+    end;
+
+    if Item.outputType in [jamGP2, jamGP3SW] then
+    begin
+      JamFile := TJamFile.Create;
+      OldJamFile := TJamFile.Create;
+      try
+        OldJamFile.LoadFromFile(Item.filepath, False);
+        JamFile.ConvertGpxJam(OldJamFile, Item.outputType = jamGP2);
+        ZeroPalettesIfRequested;
+        JamFile.SaveToFile(Item.outputpath, False);
+      finally
+        JamFile.Free;
+        OldJamFile.Free;
+      end;
+    end;
+  end;
+end;
+
+procedure TJamBatchForm.ConvertJam;
+// Snapshot BatchList, process each item on a background thread. The
+// snapshot is a local var, not a global. Per-item UI updates are marshalled
+// to the main thread via TThread.Queue so the batch keeps running and
+// doesn't race with VCL.
+var
+  items: TArray<TJamBatchItem>;
+  doPalette: Boolean;
+begin
+  if BatchList.Count = 0 then Exit;
+  items := BatchList.ToArray;
+  doPalette := chkDoPalette.Checked;
+
+  TTask.Run(
     procedure
     var
-      i, x: integer;
-      ThisItem: TJamBatchItem;
-      FJamFile, FOldJamFile: TJamFile;
-      FHWJamFile: THWJamFile;
+      i: integer;
+      it: TJamBatchItem;
     begin
-      for i := 0 to High(tmpArr) do
+      for i := 0 to High(items) do
       begin
-        ThisItem := tmpArr[i]; // <-- capture per-iteration
-
-        checkPath(ThisItem.outputpath);
-
-        if ThisItem.inputType = jamGP3HW then
-        begin
-          if ThisItem.outputType = jamGP3SW then
+        it := items[i];
+        try
+          ConvertSingleItem(it, doPalette);
+          it.processed := True;
+        except
+          on E: Exception do
           begin
-            FJamFile := TJamFile.Create;
-            FHWJamFile := THWJamFile.Create;
-
-            FHWJamFile.LoadFromFile(ThisItem.filepath);
-
-            FJamFile.ConvertHWJam(FHWJamFile, False);
-
-            FJamFile.SaveToFile(ThisItem.outputpath, False);
-
-            FJamFile.Free;
-            FHWJamFile.Free;
-          end;
-
-          if ThisItem.outputType = jamGP2 then
-          begin
-            FJamFile := TJamFile.Create;
-            FHWJamFile := THWJamFile.Create;
-
-            FHWJamFile.LoadFromFile(ThisItem.filepath);
-
-            FJamFile.ConvertHWJam(FHWJamFile, True);
-
-            FJamFile.SaveToFile(ThisItem.outputpath, False);
-
-            FJamFile.Free;
-            FHWJamFile.Free;
+            // Mark as not-processed; continue with remaining files
+            it.processed := False;
+            OutputDebugString(PChar(Format(
+              'Batch: conversion failed for %s: %s',
+              [it.filepath, E.Message])));
           end;
         end;
-
-        if ThisItem.inputType = jamGP2 then
-        begin
-          if ThisItem.outputType = jamGP3SW then
+        // Marshal the UI update to the main thread — non-blocking so the
+        // background batch doesn't stall on each Queue call.
+        TThread.Queue(nil,
+          procedure
           begin
-            FJamFile := TJamFile.Create;
-            FOldJamFile := TJamFile.Create;
-
-            FOldJamFile.LoadFromFile(ThisItem.filepath, False);
-
-            FJamFile.ConvertGpxJam(FOldJamFile, False);
-
-            if chkDoPalette.Checked then
-              for x := 0 to FJamFile.FEntries.Count - 1 do
-                FJamFile.ZeroPalette(x);
-
-            FJamFile.SaveToFile(ThisItem.outputpath, False);
-
-            FJamFile.Free;
-            FOldJamFile.Free;
-          end;
-
-          if ThisItem.outputType = jamGP2 then
-          begin
-            FJamFile := TJamFile.Create;
-            FOldJamFile := TJamFile.Create;
-
-            FOldJamFile.LoadFromFile(ThisItem.filepath, False);
-
-            FJamFile.ConvertGpxJam(FOldJamFile, True);
-
-            if chkDoPalette.Checked then
-              for x := 0 to FJamFile.FEntries.Count - 1 do
-                FJamFile.ZeroPalette(x);
-
-            FJamFile.SaveToFile(ThisItem.outputpath, False);
-
-            FJamFile.Free;
-            FOldJamFile.Free;
-          end;
-
-          if ThisItem.outputType = jamGP3HW then
-          begin
-            FHWJamFile := THWJamFile.Create;
-            FHWJamFile.ConvertGpxJam(ThisItem.filepath);
-            FHWJamFile.SaveToFile(ThisItem.outputpath);
-            FHWJamFile.Free;
-          end;
-
-        end;
-
-        if ThisItem.inputType = jamGP3SW then
-        begin
-          if ThisItem.outputType = jamGP3SW then
-          begin
-            FJamFile := TJamFile.Create;
-            FOldJamFile := TJamFile.Create;
-
-            FOldJamFile.LoadFromFile(ThisItem.filepath, False);
-
-            FJamFile.ConvertGpxJam(FOldJamFile, False);
-
-            if chkDoPalette.Checked then
-              for x := 0 to FJamFile.FEntries.Count - 1 do
-                FJamFile.ZeroPalette(x);
-
-            FJamFile.SaveToFile(ThisItem.outputpath, False);
-
-            FJamFile.Free;
-            FOldJamFile.Free;
-          end;
-
-          if ThisItem.outputType = jamGP2 then
-          begin
-            FJamFile := TJamFile.Create;
-            FOldJamFile := TJamFile.Create;
-
-            FOldJamFile.LoadFromFile(ThisItem.filepath, False);
-
-            FJamFile.ConvertGpxJam(FOldJamFile, True);
-
-            if chkDoPalette.Checked then
-              for x := 0 to FJamFile.FEntries.Count - 1 do
-                FJamFile.ZeroPalette(x);
-
-            FJamFile.SaveToFile(ThisItem.outputpath, False);
-
-            FJamFile.Free;
-            FOldJamFile.Free;
-          end;
-
-          if ThisItem.outputType = jamGP3HW then
-          begin
-            FHWJamFile := THWJamFile.Create;
-            FHWJamFile.ConvertGpxJam(ThisItem.filepath);
-            FHWJamFile.SaveToFile(ThisItem.outputpath);
-            FHWJamFile.Free;
-          end;
-
-        end;
-        ThisItem.processed := True;
-        OnItemProcessed(ThisItem);
+            OnItemProcessed(it);
+          end);
       end;
     end);
-
 end;
 
 procedure TJamBatchForm.DeleteItems1Click(Sender: TObject);
@@ -594,11 +574,8 @@ end;
 
 procedure TJamBatchForm.btnRunClick(Sender: TObject);
 begin
-  TTask.run(
-    procedure
-    begin
-      ConvertJam;
-    end);
+  // ConvertJam internally launches its own TTask; don't double-wrap.
+  ConvertJam;
 end;
 
 procedure TJamBatchForm.radioGP2Click(Sender: TObject);
@@ -625,40 +602,48 @@ end;
 
 procedure TJamBatchForm.OnItemProcessed(Item: TJamBatchItem);
 begin
+  // Just update the one row rather than clearing + rebuilding the entire
+  // ListView (which loses sort order, selection, and scroll position).
+  UpdateItemRow(Item);
+end;
 
-  BatchList.Remove(Item);
-  RefreshListView;
+procedure TJamBatchForm.UpdateItemRow(Item: TJamBatchItem);
+var
+  i: integer;
+  li: TListItem;
+begin
+  for i := 0 to lvBatch.Items.Count - 1 do
+  begin
+    li := lvBatch.Items[i];
+    if TJamBatchItem(li.Data) = Item then
+    begin
+      UpdateListViewItem(li);
+      Exit;
+    end;
+  end;
 end;
 
 function TJamBatchForm.GetJamType(jamType: TJamType): string;
 begin
-
-  if jamType = jamGP2 then
-    Result := 'GP2 JAM';
-
-  if jamType = jamGP3SW then
-    Result := 'GP3 Software JAM';
-
-  if jamType = jamGP3HW then
-    Result := 'GP3 Hardware JAM';
-
+  case jamType of
+    jamGP2:   Result := 'GP2 JAM';
+    jamGP3SW: Result := 'GP3 Software JAM';
+    jamGP3HW: Result := 'GP3 Hardware JAM';
+  else
+    Result := '';
+  end;
 end;
 
 function TJamBatchForm.GetSimplifyOptions(opts: TTextureSimpOptions): string;
 begin
-
-  if opts = quad then
-    Result := 'Quad Tree Method (Blocky)';
-
-  if opts = seed then
-    Result := 'Seed Threshold';
-
-  if opts = mean then
-    Result := 'Mean Region';
-
-  if opts = neighbour then
-    Result := 'Neighbour Threshold (Usually best)';
-
+  case opts of
+    quad:      Result := 'Quad Tree Method (Blocky)';
+    seed:      Result := 'Seed Threshold';
+    mean:      Result := 'Mean Region';
+    neighbour: Result := 'Neighbour Threshold (Usually best)';
+  else
+    Result := '';
+  end;
 end;
 
 procedure TJamBatchForm.RefreshListView;
@@ -800,37 +785,27 @@ begin
   end;
 end;
 
-// write any changed detail back to *all* selected items
+// Write any changed detail back to all selected items. We use "which
+// control has focus" as a proxy for "which property the user is editing",
+// so only the edited field gets applied across selection.
 procedure TJamBatchForm.ApplyDetailsToItems(const Items: TArray<TJamBatchItem>);
 var
   jamItem: TJamBatchItem;
 begin
-  // jamGP2, jamGP3SW, jamGP3HW
   for jamItem in Items do
   begin
     if edtOutputPath.Focused then
-      if lvBatch.SelCount > 1 then
-        jamItem.outputpath := edtOutputPath.Text
-      else
-        jamItem.outputpath := edtOutputPath.Text;
+      jamItem.outputpath := edtOutputPath.Text;
 
     if edtFilename.Focused then
-      if lvBatch.SelCount > 1 then
-        jamItem.filename := edtFilename.Text
-      else
-        jamItem.filename := edtFilename.Text;
+      jamItem.filename := edtFilename.Text;
 
-    if radioGP2.Focused then
-      if radioGP2.Checked then
-        jamItem.outputType := jamGP2;
-
-    if radioGP3.Focused then
-      if radioGP3.Checked then
-        jamItem.outputType := jamGP3SW;
-
-    if radioGP3HW.Focused then
-      if radioGP3HW.Checked then
-        jamItem.outputType := jamGP3HW;
+    if radioGP2.Focused and radioGP2.Checked then
+      jamItem.outputType := jamGP2;
+    if radioGP3.Focused and radioGP3.Checked then
+      jamItem.outputType := jamGP3SW;
+    if radioGP3HW.Focused and radioGP3HW.Checked then
+      jamItem.outputType := jamGP3HW;
 
     if cbSimplify.Focused then
       jamItem.TextureOptions.Simplify :=
@@ -847,9 +822,6 @@ begin
       jamItem.TextureOptions.doSimplePal := chkSimpPalette.Checked;
   end;
   RefreshSelectedItems;
-
-  updateDir := False;
-  tempDir := '';
 end;
 
 initialization
