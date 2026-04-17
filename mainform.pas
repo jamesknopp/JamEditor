@@ -130,10 +130,17 @@ type
                 N13: TMenuItem;
                 menuDrawOutlines: TMenuItem;
                 menuSnap: TMenuItem;
+                menuCheckerboard: TMenuItem;
+                menuDPIScale: TMenuItem;
                 treeimagecollection: TImageCollection;
                 treeimagelist: TVirtualImageList;
                 toolbar_drawOutlines: TToolButton;
                 toolbarSnap: TToolButton;
+                toolbarCheckerboard: TToolButton;
+                ToolButton12: TToolButton;
+                toolbarBatch: TToolButton;
+                toolbarAutoPack: TToolButton;
+                toolbarJamAnalysis: TToolButton;
                 ToolButton5: TToolButton;
                 toolbarZoomIN: TToolButton;
                 ToolButton6: TToolButton;
@@ -163,6 +170,7 @@ type
                 tex_Y: TSpinEdit;
                 panel_flags: TPanel;
                 tex_flags: TCheckListBox;
+                chkShowAdvancedFlags: TCheckBox;
                 panel_TexPreview: TPanel;
                 ImageEntry: TImage;
                 panel_PalPreview: TPanel;
@@ -197,17 +205,19 @@ type
                 texScaleX: TSpinEdit;
                 texScaleY: TSpinEdit;
                 texScale: TSpinEdit;
-                jam_Canvas: TPanel;
-                Label4: TLabel;
                 canvasHeight: TSpinEdit;
                 Button5: TButton;
+                panelCanvasBar: TPanel;
+                lblCanvasPrefix: TLabel;
+                lblCanvasSize: TLabel;
+                lblCanvasHeightLbl: TLabel;
+                lblCanvasZoom: TLabel;
                 CategoryPanelGroup1: TCategoryPanelGroup;
                 panel_TexturePreview: TCategoryPanel;
                 Panel_TexProperties: TCategoryPanel;
                 panel_TexFlags: TCategoryPanel;
                 panel_ScaleParameters: TCategoryPanel;
                 panel_PalEdit: TCategoryPanel;
-                panel_JAMCanvas: TCategoryPanel;
                 panel_RCRControls: TCategoryPanel;
                 N17: TMenuItem;
                 JamAnalysis1: TMenuItem;
@@ -244,6 +254,8 @@ type
                 procedure Browser1Click(Sender: TObject);
                 procedure Splitter2Paint(Sender: TObject);
                 procedure tex_flagsClickCheck(Sender: TObject);
+                procedure chkShowAdvancedFlagsClick(Sender: TObject);
+                procedure RebuildFlagsList;
                 procedure tex_IDChange(Sender: TObject);
                 procedure tex_XChange(Sender: TObject);
                 procedure tex_YChange(Sender: TObject);
@@ -283,6 +295,9 @@ type
                 procedure toolbarMoveClick(Sender: TObject);
                 procedure toolbarSnapClick(Sender: TObject);
                 procedure menuSnapClick(Sender: TObject);
+                procedure toolbarCheckerboardClick(Sender: TObject);
+                procedure menuCheckerboardClick(Sender: TObject);
+                procedure menuDPIScaleClick(Sender: TObject);
                 procedure ImageCanvasMouseMove(Sender: TObject;
                   Shift: TShiftState; X, Y: integer);
                 procedure ImageCanvasDblClick(Sender: TObject);
@@ -359,8 +374,6 @@ type
                 procedure Panel_TexPropertiesCollapse(Sender: TObject);
                 procedure Panel_TexPropertiesExpand(Sender: TObject);
                 procedure panel_TexFlagsCollapse(Sender: TObject);
-                procedure panel_JAMCanvasCollapse(Sender: TObject);
-                procedure panel_JAMCanvasExpand(Sender: TObject);
                 procedure panel_PalEditCollapse(Sender: TObject);
                 procedure panel_PalEditExpand(Sender: TObject);
                 procedure panel_RCRControlsCollapse(Sender: TObject);
@@ -384,6 +397,11 @@ type
                 procedure Button2Click(Sender: TObject);
     procedure Button3Click(Sender: TObject);
     procedure About1Click(Sender: TObject);
+
+                // Form-level WM_MOVE handler — fires in the form's own WndProc
+                // so it is guaranteed to run whenever this window is repositioned,
+                // regardless of DPI-awareness mode or Application.OnMessage quirks.
+                procedure WMFormMove(var Msg: TMessage); message WM_MOVE;
 
         public
                 FJamFile: TJamFile;
@@ -449,6 +467,10 @@ type
                 procedure ApplySnap(Mode: TResizeMode;
                   var newX, newY, newW, newH: integer);
                 procedure ToggleSnap;
+                procedure ToggleCheckerboard;
+                procedure ToggleDPIScaling;
+                procedure ComposeCheckerboard(var bmp: TBitmap; keyColor: TColor);
+                procedure ApplyOutlineOverlay(bmp: TBitmap);
                 procedure CaptureOriginalSelectedState;
                 procedure RestoreOriginalSelectedState;
 
@@ -460,7 +482,25 @@ type
                   const Caption: string; data: integer; jamID: integer;
                   editNode: boolean; nodeType: TJamTreeNodeID): TTreeNode;
         private
+                FCheckerPattern: TBitmap;
+                FCheckerBrush: HBRUSH;
+                // Tracks which monitor the window is currently on so WM_MOVE
+                // only triggers a DPI refresh when the window crosses a screen
+                // boundary rather than on every pixel of drag movement.
+                FCurrentMonitorHandle: HMONITOR;
                 procedure MsgHandler(var Msg: TMsg; var Handled: boolean);
+                function CheckerBrush: HBRUSH;
+                // Queries the physical (raw) DPI of hMon via GetDpiForMonitor
+                // (shcore.dll, Win8.1+), falls back to Screen.PixelsPerInch.
+                // If the computed factor differs from the current dblDPIFactor
+                // and the DPI-scale toggle is active, the canvas is refreshed.
+                procedure RefreshDPIFactor(hMon: HMONITOR);
+                // Per-frame scroll correction to keep a canvas point pinned
+                // under the mouse (or screen centre) while zoom animates.
+                procedure ApplyZoomAnchorScroll;
+                // Sets the zoom anchor to the centre of the visible ScrollBox
+                // area — used by the toolbar +/- zoom buttons.
+                procedure SetZoomAnchorToCenter;
         public
 
         end;
@@ -505,7 +545,28 @@ var
         FPrevSnapXLineScreen: Integer;      // screen X of last guide
         FPrevSnapYLineScreen: Integer;      // screen Y of last guide
         FDragDirtyRect: TRect;              // union of this frame's dirty regions
-        FLastDragTick: Cardinal;            // GetTickCount throttle for drag updates
+
+        // Zoom-anchor scroll state — keeps a specific canvas point pinned to
+        // a specific screen position while the zoom animation runs.
+        // FZoomAnchorRelX/Y  : raw-canvas pixel that should stay fixed
+        //                       = (screenPos - ImgLeft) / intJamZoom_at_start
+        // FZoomAnchorScreenX/Y: ScrollBox-client pixel it must stay at
+        // FZoomHasAnchor     : false until set by FormMouseWheel / toolbar
+        FZoomAnchorRelX:    Double;
+        FZoomAnchorRelY:    Double;
+        FZoomAnchorScreenX: Integer;
+        FZoomAnchorScreenY: Integer;
+        FZoomHasAnchor:     Boolean;
+
+        // High-resolution drag-rate limiter (QueryPerformanceCounter).
+        // FLastDragQPC  — QPF timestamp of the last accepted drag frame.
+        // FQPFFreq      — QueryPerformanceFrequency result (counts / second).
+        // FDragFrameInterval — QPF counts between allowed renders; set from
+        //                     the monitor's actual refresh rate so we never
+        //                     submit frames faster than the display can show.
+        FLastDragQPC:       Int64;
+        FQPFFreq:           Int64;
+        FDragFrameInterval: Int64;
 
         // "Original" texture state captured when a texture is first
         // selected in move mode. Escape restores this state (like Photoshop
@@ -661,13 +722,16 @@ begin
 end;
 
 function TFormMain.ScreenToCanvas(const P: TPoint): TPoint;
+var
+        ez: Double;
 begin
-        if intJamZoom = 0 then
+        ez := EffectiveJamZoom;
+        if ez = 0 then
                 Result := P
         else
         begin
-                Result.X := Round(P.X / intJamZoom);
-                Result.Y := Round(P.Y / intJamZoom);
+                Result.X := Round(P.X / ez);
+                Result.Y := Round(P.Y / ez);
         end;
 end;
 
@@ -752,10 +816,13 @@ end;
 function TFormMain.GetSelectedTextureScreenRect: TRect;
 var
         W, H: integer;
+        ez: Double;
 begin
         FillChar(Result, SizeOf(Result), 0);
         if intSelectedTexture < 0 then
                 Exit;
+
+        ez := EffectiveJamZoom;
 
         if boolHWJAM then
         begin
@@ -764,10 +831,10 @@ begin
                         Exit;
                 with FHWJamFile.FEntries[intSelectedTexture].FInfo do
                 begin
-                        Result.Left := Round(X * intJamZoom);
-                        Result.Top := Round(Y * intJamZoom);
-                        W := Round(Width * intJamZoom);
-                        H := Round(Height * intJamZoom);
+                        Result.Left := Round(X * ez);
+                        Result.Top := Round(Y * ez);
+                        W := Round(Width * ez);
+                        H := Round(Height * ez);
                 end;
         end
         else
@@ -777,10 +844,10 @@ begin
                         Exit;
                 with FJamFile.FEntries[intSelectedTexture].FInfo do
                 begin
-                        Result.Left := Round(X * intJamZoom);
-                        Result.Top := Round(Y * intJamZoom);
-                        W := Round(Width * intJamZoom);
-                        H := Round(Height * intJamZoom);
+                        Result.Left := Round(X * ez);
+                        Result.Top := Round(Y * ez);
+                        W := Round(Width * ez);
+                        H := Round(Height * ez);
                 end;
         end;
         Result.Right := Result.Left + W;
@@ -922,6 +989,7 @@ begin
         // texture on top — so it always appears ABOVE other textures,
         // with overlapping textures underneath correctly preserved.
         ReleaseDragBackground;
+        FLastDragQPC := 0;  // ensure first drag frame is always rendered
 
         if intSelectedTexture < 0 then Exit;
         if boolHWJAM then Exit; // HW: still re-renders fully for now
@@ -1002,10 +1070,10 @@ begin
         // + Photoshop handles (halfsize 4 + some buffer).
         with FJamFile.FEntries[intSelectedTexture].FInfo do
         begin
-                sx := Round(X * intJamZoom);
-                sy := Round(Y * intJamZoom);
-                sw := Round(Width * intJamZoom);
-                sh := Round(Height * intJamZoom);
+                sx := Round(X * EffectiveJamZoom);
+                sy := Round(Y * EffectiveJamZoom);
+                sw := Round(Width * EffectiveJamZoom);
+                sh := Round(Height * EffectiveJamZoom);
         end;
         newTexRect := Rect(sx - 14, sy - 14, sx + sw + 14, sy + sh + 14);
 
@@ -1031,12 +1099,12 @@ begin
         // 4. Restore where new snap guides will be (clean slate for redraw)
         if FSnapXActive then
         begin
-                sx := Round(FSnapXLine * intJamZoom);
+                sx := Round(FSnapXLine * EffectiveJamZoom);
                 RestoreBackgroundRect(bmp, Rect(sx - 2, 0, sx + 3, bmp.Height));
         end;
         if FSnapYActive then
         begin
-                sy := Round(FSnapYLine * intJamZoom);
+                sy := Round(FSnapYLine * EffectiveJamZoom);
                 RestoreBackgroundRect(bmp, Rect(0, sy - 2, bmp.Width, sy + 3));
         end;
 
@@ -1044,10 +1112,10 @@ begin
         if Assigned(FDragTextureCache) then
                 with FJamFile.FEntries[intSelectedTexture].FInfo do
                 begin
-                        sx := Round(X * intJamZoom);
-                        sy := Round(Y * intJamZoom);
-                        sw := Round(Width * intJamZoom);
-                        sh := Round(Height * intJamZoom);
+                        sx := Round(X * EffectiveJamZoom);
+                        sy := Round(Y * EffectiveJamZoom);
+                        sw := Round(Width * EffectiveJamZoom);
+                        sh := Round(Height * EffectiveJamZoom);
                         if (sw > 0) and (sh > 0) then
                                 TransparentBlt(bmp.Canvas.Handle, sx, sy, sw, sh,
                                   FDragTextureCache.Canvas.Handle, 0, 0,
@@ -1067,9 +1135,9 @@ begin
         FPrevSnapXActive := FSnapXActive;
         FPrevSnapYActive := FSnapYActive;
         if FSnapXActive then
-                FPrevSnapXLineScreen := Round(FSnapXLine * intJamZoom);
+                FPrevSnapXLineScreen := Round(FSnapXLine * EffectiveJamZoom);
         if FSnapYActive then
-                FPrevSnapYLineScreen := Round(FSnapYLine * intJamZoom);
+                FPrevSnapYLineScreen := Round(FSnapYLine * EffectiveJamZoom);
 
         // Snap guides + final invalidate are performed by the caller
         // (ApplyTextureTransform) after this function returns, so both
@@ -1154,13 +1222,13 @@ begin
         bmp.Canvas.Brush.Style := bsClear;
         if FSnapXActive then
         begin
-                sx := Round(FSnapXLine * intJamZoom);
+                sx := Round(FSnapXLine * EffectiveJamZoom);
                 bmp.Canvas.MoveTo(sx, 0);
                 bmp.Canvas.LineTo(sx, bmp.Height);
         end;
         if FSnapYActive then
         begin
-                sy := Round(FSnapYLine * intJamZoom);
+                sy := Round(FSnapYLine * EffectiveJamZoom);
                 bmp.Canvas.MoveTo(0, sy);
                 bmp.Canvas.LineTo(bmp.Width, sy);
         end;
@@ -2023,6 +2091,7 @@ end;
 procedure TFormMain.toolbarZoomINClick(Sender: TObject);
 var base: Double;
 begin
+        SetZoomAnchorToCenter;
         if timerZoom.Enabled then base := FTargetZoom else base := intJamZoom;
         StartZoomTo(base * 1.5);
 end;
@@ -2030,12 +2099,14 @@ end;
 procedure TFormMain.toolbarZoomOUTClick(Sender: TObject);
 var base: Double;
 begin
+        SetZoomAnchorToCenter;
         if timerZoom.Enabled then base := FTargetZoom else base := intJamZoom;
         StartZoomTo(base / 1.5);
 end;
 
 procedure TFormMain.toolbarZoomResetClick(Sender: TObject);
 begin
+        SetZoomAnchorToCenter;
         StartZoomTo(1.0);
 end;
 
@@ -2074,6 +2145,21 @@ end;
 procedure TFormMain.menuSnapClick(Sender: TObject);
 begin
         ToggleSnap;
+end;
+
+procedure TFormMain.toolbarCheckerboardClick(Sender: TObject);
+begin
+        ToggleCheckerboard;
+end;
+
+procedure TFormMain.menuCheckerboardClick(Sender: TObject);
+begin
+        ToggleCheckerboard;
+end;
+
+procedure TFormMain.menuDPIScaleClick(Sender: TObject);
+begin
+        ToggleDPIScaling;
 end;
 
 procedure TFormMain.ImageCanvasDblClick(Sender: TObject);
@@ -2280,16 +2366,6 @@ begin
         end;
 end;
 
-procedure TFormMain.panel_JAMCanvasCollapse(Sender: TObject);
-begin
-        ForceCategoryPanelRedraw(CategoryPanelGroup1);
-end;
-
-procedure TFormMain.panel_JAMCanvasExpand(Sender: TObject);
-begin
-        ForceCategoryPanelRedraw(CategoryPanelGroup1);
-end;
-
 procedure TFormMain.panel_PalEditCollapse(Sender: TObject);
 begin
         ForceCategoryPanelRedraw(CategoryPanelGroup1);
@@ -2476,7 +2552,7 @@ begin
 
         RefreshCanvas;
 
-        SetStretchBltMode(ImageCanvas.Canvas.Handle, HALFTONE);
+        SetStretchBltMode(ImageCanvas.Canvas.Handle, COLORONCOLOR);
 
         HWUndoStack.Clear;
         SWUndoStack.Clear;
@@ -2561,7 +2637,7 @@ begin
 
                 RefreshCanvas;
 
-                SetStretchBltMode(ImageCanvas.Canvas.Handle, HALFTONE);
+                SetStretchBltMode(ImageCanvas.Canvas.Handle, COLORONCOLOR);
         end;
 
         boolUndo := true;
@@ -2642,7 +2718,8 @@ begin
                         ConverttoGP3SWJAM.Enabled := true;
                         ConverttoGP3HWJAM.Enabled := false;
 
-                        panel_JAMCanvas.Visible := true;
+                        canvasHeight.Enabled := true;
+                        Button5.Enabled := true;
 
                         canvasHeight.Value := FHWJamFile.FHeader.JamTotalHeight;
 
@@ -2669,7 +2746,8 @@ begin
                         panel_PalEdit.Visible := true;
                         panel_RCRControls.Visible := false;
 
-                        panel_JAMCanvas.Visible := true;
+                        canvasHeight.Enabled := true;
+                        Button5.Enabled := true;
 
                         mainMenuAddTexture.Enabled := true;
                         mainMenuDeleteTexture.Enabled := true;
@@ -2754,7 +2832,8 @@ begin
                         panel_RCR.Visible := true;
                         panel_RCRControls.Visible := true;
                         panel_TexProperties_Generic.Enabled := false;
-                        panel_JAMCanvas.Visible := false;
+                        canvasHeight.Enabled := false;
+                        Button5.Enabled := false;
 
                         autoPackTexs.Enabled := false;
 
@@ -2872,24 +2951,20 @@ begin
         if boolHWJAM = true then
                 bmp := CreateTransparencyMatte(FHWJamFile.DrawCanvas(true));
 
-        newWidth := Round(bmp.Width * intJamZoom);
-        newHeight := Round(bmp.height * intJamZoom);
+        newWidth := Round(bmp.Width * EffectiveJamZoom);
+        newHeight := Round(bmp.height * EffectiveJamZoom);
 
         try
                 scaledBMP := TBitmap.Create;
                 scaledBMP.height := newHeight;
                 scaledBMP.Width := newWidth;
 
-                SetStretchBltMode(scaledBMP.Canvas.Handle, HALFTONE);
+                SetStretchBltMode(scaledBMP.Canvas.Handle, COLORONCOLOR);
 
                 StretchBlt(scaledBMP.Canvas.Handle, 0, 0, newWidth, newHeight,
                   bmp.Canvas.Handle, 0, 0, bmp.Width, bmp.height, SRCCOPY);
 
-                if boolHWJAM = false then
-                        scaledBMP := FJamFile.DrawOutlines(scaledBMP);
-
-                if boolHWJAM = true then
-                        scaledBMP := FHWJamFile.DrawOutlines(scaledBMP);
+                ApplyOutlineOverlay(scaledBMP);
 
                 ImageCanvas.height := newHeight;
                 ImageCanvas.Width := newWidth;
@@ -2928,8 +3003,8 @@ begin
 
         tmpBMP.SetSize(512, FJamFile.FHeader.JamTotalHeight);
 
-        newWidth := Round(tmpBMP.Width * intJamZoom);
-        newHeight := Round(tmpBMP.height * intJamZoom);
+        newWidth := Round(tmpBMP.Width * EffectiveJamZoom);
+        newHeight := Round(tmpBMP.height * EffectiveJamZoom);
 
         boolRCRJAM := true;
         FJamFile.EncodeCanvas;
@@ -3631,6 +3706,18 @@ begin
                         end;
                 end;
         end;
+
+        // WM_DPICHANGED: DPI-aware apps receive this when Windows changes the
+        // effective DPI (e.g. user adjusts the scaling slider at runtime).
+        // WMFormMove (a proper WM_MOVE message-map handler on the form class)
+        // already handles monitor-crossing detection, so this is belt-and-
+        // suspenders for the scaling-change case only.
+        if Msg.message = $02E0 {WM_DPICHANGED} then
+        begin
+                FCurrentMonitorHandle := Self.Monitor.Handle;
+                RefreshDPIFactor(FCurrentMonitorHandle);
+                Handled := False; // let VCL handle default repositioning too
+        end;
 end;
 
 procedure TFormMain.FormCreate(Sender: TObject);
@@ -3668,6 +3755,25 @@ begin
         intPaletteID := 0;
 
         intJamZoom := 1;
+
+        // Initialise high-resolution drag throttle.  Default to 100 Hz until
+        // RefreshDPIFactor queries the actual monitor refresh rate below.
+        QueryPerformanceFrequency(FQPFFreq);
+        FLastDragQPC := 0;
+        if FQPFFreq > 0 then
+                FDragFrameInterval := FQPFFreq div 100  // 100 Hz fallback
+        else
+                FDragFrameInterval := 0; // QPF unavailable — never throttle
+
+        // Compute the monitor's physical (hardware) DPI factor for the
+        // DPI-scale toggle.  RefreshDPIFactor does the full detection
+        // (GetDpiForMonitor MDT_RAW_DPI, fallback to Screen.PixelsPerInch).
+        // We prime dblDPIFactor to 1.0 first so RefreshDPIFactor's "changed"
+        // guard fires and sets the initial hint text.
+        dblDPIFactor := 1.0;
+        boolDPIScaling := False;  // loaded from registry below
+        FCurrentMonitorHandle := Screen.PrimaryMonitor.Handle;
+        RefreshDPIFactor(FCurrentMonitorHandle);
 
         intSimplifyThreshold := 20;
         intSimplifyMethod := 3;
@@ -3723,11 +3829,31 @@ begin
                         strGP32kLocation := Reg.ReadString('GP32kLocation');
                         boolAutoLayout := Reg.ReadBool('AutoLayout');
                         boolDrawOutlines := Reg.ReadBool('DrawOutlines');
+                        if Reg.ValueExists('ShowAdvancedFlags') then
+                                boolShowAdvancedFlags := Reg.ReadBool('ShowAdvancedFlags');
+                        if Reg.ValueExists('DPIScaling') then
+                                boolDPIScaling := Reg.ReadBool('DPIScaling');
 
                         Reg.CloseKey;
                 end;
         finally
                 Reg.Free;
+        end;
+
+        // Sync DPI Scale menu item to persisted value
+        menuDPIScale.Checked := boolDPIScaling;
+
+        // Apply persisted advanced-flags preference. Suppress the OnClick
+        // handler while we sync the checkbox to avoid a double rebuild.
+        if boolShowAdvancedFlags then
+        begin
+                UpdatingFromCode := True;
+                try
+                        chkShowAdvancedFlags.Checked := True;
+                finally
+                        UpdatingFromCode := False;
+                end;
+                RebuildFlagsList;
         end;
 
         intMaxMRU := 10;
@@ -3861,6 +3987,8 @@ begin
                         Reg.WriteString('GP32kLocation', strGP32kLocation);
                         Reg.WriteBool('AutoLayout', boolAutoLayout);
                         Reg.WriteBool('DrawOutlines', boolDrawOutlines);
+                        Reg.WriteBool('ShowAdvancedFlags', boolShowAdvancedFlags);
+                        Reg.WriteBool('DPIScaling', boolDPIScaling);
                         Reg.CloseKey;
                 end;
         finally
@@ -3886,6 +4014,13 @@ begin
 
         SWRedoStack.Free;
         HWRedoStack.Free;
+
+        if FCheckerBrush <> 0 then
+        begin
+                DeleteObject(FCheckerBrush);
+                FCheckerBrush := 0;
+        end;
+        FreeAndNil(FCheckerPattern);
 end;
 
 procedure TFormMain.FormKeyDown(Sender: TObject; var Key: Word;
@@ -4013,10 +4148,10 @@ begin
         if intSelectedTexture < 0 then Exit;
 
         // Convert screen-pixel tolerance to canvas pixels
-        if intJamZoom <= 0 then
+        if EffectiveJamZoom <= 0 then
                 snapPx := SNAP_SCREEN_PX
         else
-                snapPx := Max(1, Min(12, Round(SNAP_SCREEN_PX / intJamZoom)));
+                snapPx := Max(1, Min(12, Round(SNAP_SCREEN_PX / EffectiveJamZoom)));
 
         // Resolve active edges for this drag mode
         activeLeft   := Mode in [rmMove, rmLeft,  rmTopLeft,  rmBottomLeft];
@@ -4173,6 +4308,279 @@ begin
         menuSnap.Checked := boolSnapEnabled;
 end;
 
+procedure TFormMain.ToggleCheckerboard;
+begin
+        boolShowCheckerboard := not boolShowCheckerboard;
+        toolbarCheckerboard.Down := boolShowCheckerboard;
+        menuCheckerboard.Checked := boolShowCheckerboard;
+        if boolJamLoaded then
+                RefreshCanvas;
+end;
+
+procedure TFormMain.WMFormMove(var Msg: TMessage);
+// Handles WM_MOVE at the window-procedure level (not Application.OnMessage)
+// so it fires whenever the form is repositioned — including drags, keyboard
+// moves, Snap-to-Edge, and programmatic SetWindowPos calls — on all Windows
+// versions and regardless of whether a DPI-awareness manifest is present.
+//
+// We compare Self.Monitor.Handle against the cached FCurrentMonitorHandle.
+// The comparison is O(1) and safe to do on every WM_MOVE.  We only call the
+// (slightly more expensive) RefreshDPIFactor when the window has actually
+// crossed a screen boundary, so there is no performance penalty during
+// ordinary within-monitor window drags.
+var
+        newMon: HMONITOR;
+begin
+        inherited;  // let VCL do its normal WM_MOVE work first
+
+        // FCurrentMonitorHandle is a class field, so it is zero before
+        // FormCreate runs.  WM_MOVE fires during window construction (before
+        // FormCreate), at which point menuDPIScale and other components do not
+        // exist yet.  Guard here so we never enter RefreshDPIFactor early.
+        if FCurrentMonitorHandle = 0 then
+                Exit;
+
+        newMon := Self.Monitor.Handle;
+        if newMon <> FCurrentMonitorHandle then
+        begin
+                FCurrentMonitorHandle := newMon;
+                RefreshDPIFactor(FCurrentMonitorHandle);
+        end;
+end;
+
+procedure TFormMain.RefreshDPIFactor(hMon: HMONITOR);
+// Re-queries the physical hardware DPI of the given monitor and also
+// updates the drag-frame-rate throttle to the monitor's actual refresh rate.
+// Uses GetDpiForMonitor(MDT_RAW_DPI) via late-binding to shcore.dll so it
+// works regardless of the app's DPI-awareness declaration and regardless of
+// the Windows display-scaling setting.  A 4K 27" panel reports ~163 raw DPI
+// (factor ≈ 1.70) whether the user has Windows scaling at 100% or 200%.
+// Falls back to Screen.PixelsPerInch when shcore is unavailable.
+var
+        hShcore: HMODULE;
+        pfnGetDpi: function(hM: HMONITOR; dpiType: UINT;
+          var dpiX, dpiY: UINT): HRESULT; stdcall;
+        rawDpiX, rawDpiY: UINT;
+        newFactor: Double;
+        hz: Integer;
+begin
+        newFactor := 1.0;
+        hShcore := LoadLibrary('shcore.dll');
+        if hShcore <> 0 then
+        try
+                @pfnGetDpi := GetProcAddress(hShcore, 'GetDpiForMonitor');
+                if Assigned(pfnGetDpi) then
+                begin
+                        rawDpiX := 96;
+                        rawDpiY := 96;
+                        // MDT_RAW_DPI = 2
+                        if pfnGetDpi(hMon, 2, rawDpiX, rawDpiY) = S_OK then
+                                newFactor := rawDpiX / 96.0;
+                end;
+        finally
+                FreeLibrary(hShcore);
+        end;
+
+        // Fallback: effective (logical) DPI from Windows — reflects scaling %
+        if newFactor <= 1.001 then
+                newFactor := Screen.PixelsPerInch / 96.0;
+
+        // Never scale below 1× regardless of quirky monitor reports
+        if newFactor < 1.0 then
+                newFactor := 1.0;
+
+        // ── Refresh rate ────────────────────────────────────────────────────
+        // GetDeviceCaps(VREFRESH) on the window's own DC returns the refresh
+        // rate of whichever monitor the window is currently on — no need for
+        // MONITORINFOEX or EnumDisplaySettings (and their type-matching
+        // headaches across Delphi versions).
+        hz := 0;
+        if Handle <> 0 then
+        begin
+                var hWinDC: HDC := GetDC(Handle);
+                if hWinDC <> 0 then
+                try
+                        hz := GetDeviceCaps(hWinDC, VREFRESH);
+                finally
+                        ReleaseDC(Handle, hWinDC);
+                end;
+        end;
+        if (hz < 30) or (hz > 500) then
+                hz := 60;  // sane fallback
+        if FQPFFreq > 0 then
+                FDragFrameInterval := FQPFFreq div hz;
+
+        // ── DPI factor ──────────────────────────────────────────────────────
+        // Only redraw when the factor actually changed and scaling is active
+        if Abs(newFactor - dblDPIFactor) > 0.01 then
+        begin
+                dblDPIFactor := newFactor;
+                menuDPIScale.Hint :=
+                  Format('Scale canvas for high-DPI display  ' +
+                         '(monitor: %d Hz, DPI factor: ×%.2g)',
+                  [hz, dblDPIFactor]);
+                if boolDPIScaling and boolJamLoaded then
+                        RefreshCanvas;
+        end
+        else
+        begin
+                dblDPIFactor := newFactor;
+                menuDPIScale.Hint :=
+                  Format('Scale canvas for high-DPI display  ' +
+                         '(monitor: %d Hz, DPI factor: ×%.2g)',
+                  [hz, dblDPIFactor]);
+        end;
+end;
+
+procedure TFormMain.ToggleDPIScaling;
+begin
+        boolDPIScaling := not boolDPIScaling;
+        menuDPIScale.Checked := boolDPIScaling;
+        if boolJamLoaded then
+                RefreshCanvas;
+end;
+
+function TFormMain.CheckerBrush: HBRUSH;
+// Lazily builds a 16x16 checkerboard pattern brush. Reused for every
+// ComposeCheckerboard call so painting the background becomes a single
+// FillRect instead of tens of thousands of per-square FillRects at high
+// zoom.
+const
+        SQ = 8;
+        PATSIZE = SQ * 2;
+var
+        light, dark: TColor;
+begin
+        if FCheckerBrush <> 0 then
+                Exit(FCheckerBrush);
+
+        light := RGB(210, 210, 215);
+        dark  := RGB(170, 170, 180);
+
+        FCheckerPattern := TBitmap.Create;
+        FCheckerPattern.PixelFormat := pf24bit;
+        FCheckerPattern.SetSize(PATSIZE, PATSIZE);
+        FCheckerPattern.Canvas.Brush.Color := light;
+        FCheckerPattern.Canvas.FillRect(Rect(0,   0,   SQ,      SQ));
+        FCheckerPattern.Canvas.FillRect(Rect(SQ,  SQ,  PATSIZE, PATSIZE));
+        FCheckerPattern.Canvas.Brush.Color := dark;
+        FCheckerPattern.Canvas.FillRect(Rect(SQ,  0,   PATSIZE, SQ));
+        FCheckerPattern.Canvas.FillRect(Rect(0,   SQ,  SQ,      PATSIZE));
+
+        FCheckerBrush := CreatePatternBrush(FCheckerPattern.Handle);
+        Result := FCheckerBrush;
+end;
+
+procedure TFormMain.ComposeCheckerboard(var bmp: TBitmap; keyColor: TColor);
+// View-layer only: composites the JAM render (bmp) onto a checkerboard
+// background, treating keyColor as transparent. Caller supplies the
+// color key explicitly so this routine works for both SW (palette[0])
+// and HW (TCol_TransGP3HW) JAMs. The source is flattened to pf24bit
+// because TransparentBlt's behavior on pf32bit sources with an alpha
+// channel is unreliable (alpha can suppress color-key matching).
+// Does not touch the JAM model; swaps bmp for a new display bitmap.
+var
+        composed, flat: TBitmap;
+        fullRect: TRect;
+begin
+        if (bmp = nil) or (bmp.Width <= 0) or (bmp.Height <= 0) then Exit;
+
+        flat     := nil;
+        composed := nil;
+        try
+                // Flatten only when source has alpha (HW JAM, pf32bit).
+                // TransparentBlt's color-key match is unreliable on sources
+                // with an alpha channel. Skip the copy for pf24bit sources.
+                if bmp.PixelFormat = pf32bit then
+                begin
+                        flat := TBitmap.Create;
+                        flat.PixelFormat := pf24bit;
+                        flat.SetSize(bmp.Width, bmp.Height);
+                        flat.Canvas.Draw(0, 0, bmp);
+                end;
+
+                composed := TBitmap.Create;
+                composed.PixelFormat := pf24bit;
+                composed.SetSize(bmp.Width, bmp.Height);
+
+                // Paint checkerboard with a tiled pattern brush: one GDI
+                // call regardless of zoom. The prior per-square FillRect
+                // loop fired 10k+ times at high zoom and stalled the UI.
+                fullRect := Rect(0, 0, composed.Width, composed.Height);
+                Winapi.Windows.FillRect(composed.Canvas.Handle, fullRect,
+                  CheckerBrush);
+
+                // transparent blit (use flattened source if we had to flatten)
+                if flat <> nil then
+                        TransparentBlt(composed.Canvas.Handle, 0, 0,
+                          flat.Width, flat.Height,
+                          flat.Canvas.Handle, 0, 0, flat.Width, flat.Height,
+                          keyColor)
+                else
+                        TransparentBlt(composed.Canvas.Handle, 0, 0,
+                          bmp.Width, bmp.Height,
+                          bmp.Canvas.Handle, 0, 0, bmp.Width, bmp.Height,
+                          keyColor);
+
+                // swap: free the incoming JAM bmp, return the composed view bmp
+                FreeAndNil(bmp);
+                bmp := composed;
+                composed := nil;
+        finally
+                composed.Free;
+                flat.Free;
+        end;
+end;
+
+procedure TFormMain.ApplyOutlineOverlay(bmp: TBitmap);
+// View-layer overlay: paints texture-ID outlines on the supplied display
+// bitmap. Iterates the model's entries (read-only) but does not mutate
+// them. RCR half-height layout is handled here because outlines are a
+// display concern, not a model concern.
+var
+        i: Integer;
+        tempX, tempY: Integer;
+begin
+        if not boolDrawOutlines then Exit;
+        if bmp = nil then Exit;
+
+        if boolHWJAM then
+        begin
+                if FHWJamFile = nil then Exit;
+                for i := 0 to FHWJamFile.Entries.Count - 1 do
+                        with FHWJamFile.Entries[i].Info do
+                                DrawTextureOutlines(bmp, X, Y, Width, Height,
+                                  i, JamId);
+                Exit;
+        end;
+
+        if FJamFile = nil then Exit;
+        for i := 0 to FJamFile.Entries.Count - 1 do
+        begin
+                // Drag-preview: skip outline for the moving entry
+                if i = intDragSkipEntry then Continue;
+                with FJamFile.Entries[i].Info do
+                begin
+                        tempX := X;
+                        tempY := Y;
+                        if boolRcrJam then
+                        begin
+                                if Y mod 2 <> 0 then
+                                begin
+                                        tempY := tempY - 1;
+                                        tempX := tempX + 256;
+                                end;
+                                tempY := tempY div 2;
+                                DrawTextureOutlines(bmp, tempX, tempY,
+                                  Width * 2, Height, i, JamId);
+                        end
+                        else
+                                DrawTextureOutlines(bmp, X, Y,
+                                  Width, Height, i, JamId);
+                end;
+        end;
+end;
+
 procedure TFormMain.CaptureOriginalSelectedState;
 // Records the currently selected texture's position+size. Escape will
 // restore to this. Called when a texture enters move-mode "editing"
@@ -4238,10 +4646,44 @@ begin
         begin
                 intJamZoom := FTargetZoom;
                 if booljamLoaded then RefreshCanvas;
+                ApplyZoomAnchorScroll;
                 Exit;
         end;
 
         timerZoom.Enabled := True;
+end;
+
+procedure TFormMain.ApplyZoomAnchorScroll;
+// Called after every RefreshCanvas during a zoom animation (and on instant-
+// zoom paths). Scrolls the ScrollBox so that the canvas point recorded in
+// FZoomAnchorRelX/Y stays at screen position FZoomAnchorScreenX/Y.
+//
+// Derivation: screen_x_of_canvas_point = ImageCanvas.Left + RelX * EffZoom
+//             We want that = FZoomAnchorScreenX, and ImageCanvas.Left = -ScrollPos
+//             → ScrollPos = RelX * EffZoom − AnchorScreenX
+begin
+        if not FZoomHasAnchor then Exit;
+        ScrollBox1.HorzScrollBar.Position :=
+                Max(0, Round(FZoomAnchorRelX * EffectiveJamZoom) - FZoomAnchorScreenX);
+        ScrollBox1.VertScrollBar.Position :=
+                Max(0, Round(FZoomAnchorRelY * EffectiveJamZoom) - FZoomAnchorScreenY);
+end;
+
+procedure TFormMain.SetZoomAnchorToCenter;
+// Anchors zoom to the current centre of the visible ScrollBox client area.
+// Used by toolbar +/- zoom buttons so they zoom toward/away from the centre.
+var
+        cx, cy: Integer;
+begin
+        cx := ScrollBox1.ClientWidth  div 2;
+        cy := ScrollBox1.ClientHeight div 2;
+        // Guard against degenerate state before the canvas is loaded
+        if EffectiveJamZoom <= 0 then Exit;
+        FZoomAnchorRelX    := (cx - ImageCanvas.Left) / EffectiveJamZoom;
+        FZoomAnchorRelY    := (cy - ImageCanvas.Top)  / EffectiveJamZoom;
+        FZoomAnchorScreenX := cx;
+        FZoomAnchorScreenY := cy;
+        FZoomHasAnchor     := True;
 end;
 
 procedure TFormMain.timerZoomTimer(Sender: TObject);
@@ -4262,6 +4704,10 @@ begin
 
         if booljamLoaded then
                 RefreshCanvas;
+
+        // Pin the canvas anchor point to its recorded screen position on
+        // every frame so the view tracks the zoom origin smoothly.
+        ApplyZoomAnchorScroll;
 end;
 
 procedure TFormMain.FormMouseWheel(Sender: TObject; Shift: TShiftState;
@@ -4289,7 +4735,9 @@ begin
         if not PtInRect(ScrollBox1.ClientRect, CursorPos) then
                 Exit;
 
-        OldZoom := intJamZoom;
+        // Use the effective zoom (includes DPI factor) so the canvas coordinate
+        // is in true texture pixels regardless of DPI-scale mode.
+        OldZoom := EffectiveJamZoom;
 
         // Successive wheel notches keep building on the target rather than
         // current intJamZoom (which may still be mid-animation)
@@ -4303,19 +4751,20 @@ begin
         else
                 NewTarget := NewTarget / ZOOM_FACTOR;
 
-        // Preserve position under mouse — compute recentre based on OldZoom
+        // Record canvas point under cursor and its screen position.
+        // ApplyZoomAnchorScroll will pin this point on every animation tick
+        // so the view stays anchored rather than jumping at animation end.
         ImgPos := Point(ImageCanvas.Left, ImageCanvas.Top);
         RelX := (CursorPos.X - ImgPos.X) / OldZoom;
         RelY := (CursorPos.Y - ImgPos.Y) / OldZoom;
 
-        StartZoomTo(NewTarget);
+        FZoomAnchorRelX    := RelX;
+        FZoomAnchorRelY    := RelY;
+        FZoomAnchorScreenX := CursorPos.X;
+        FZoomAnchorScreenY := CursorPos.Y;
+        FZoomHasAnchor     := True;
 
-        // Recentre using the final target (approx). Animation will not
-        // re-centre per frame, but end state is correct.
-        ScrollBox1.HorzScrollBar.Position :=
-          Round((RelX * FTargetZoom) - CursorPos.X);
-        ScrollBox1.VertScrollBar.Position :=
-          Round((RelY * FTargetZoom) - CursorPos.Y);
+        StartZoomTo(NewTarget);
 
         Handled := true;
 end;
@@ -4459,10 +4908,10 @@ begin
                 begin
                         with FHWJamFile.Entries[i].Info do
                         begin
-                                jamX := Round(X * intJamZoom);
-                                jamY := Round(Y * intJamZoom);
-                                jamW := Round(Width * intJamZoom);
-                                jamH := Round(height * intJamZoom);
+                                jamX := Round(X * EffectiveJamZoom);
+                                jamY := Round(Y * EffectiveJamZoom);
+                                jamW := Round(Width * EffectiveJamZoom);
+                                jamH := Round(height * EffectiveJamZoom);
                         end;
 
                         if (tempX >= jamX) and (tempX < jamX + jamW) and
@@ -4489,26 +4938,26 @@ begin
                                         if Y mod 2 <> 0 then
                                         begin
                                                 // Odd Y: right half of deinterlaced canvas
-                                                jamX := Round(((X + 256) div 2) * intJamZoom);
-                                                jamY := Round(((Y - 1) div 2) * intJamZoom);
+                                                jamX := Round(((X + 256) div 2) * EffectiveJamZoom);
+                                                jamY := Round(((Y - 1) div 2) * EffectiveJamZoom);
                                         end
                                         else
                                         begin
                                                 // Even Y: left half
-                                                jamX := Round((X div 2) * intJamZoom);
-                                                jamY := Round((Y div 2) * intJamZoom);
+                                                jamX := Round((X div 2) * EffectiveJamZoom);
+                                                jamY := Round((Y div 2) * EffectiveJamZoom);
                                         end;
                                         // Width: *2 then /2 in outline pipeline = original
-                                        jamW := Round(Width * intJamZoom);
+                                        jamW := Round(Width * EffectiveJamZoom);
                                         // Height: NOT halved (matches DrawTextureOutlines)
-                                        jamH := Round(Height * intJamZoom);
+                                        jamH := Round(Height * EffectiveJamZoom);
                                 end
                                 else
                                 begin
-                                        jamX := Round(X * intJamZoom);
-                                        jamY := Round(Y * intJamZoom);
-                                        jamW := Round(Width * intJamZoom);
-                                        jamH := Round(Height * intJamZoom);
+                                        jamX := Round(X * EffectiveJamZoom);
+                                        jamY := Round(Y * EffectiveJamZoom);
+                                        jamW := Round(Width * EffectiveJamZoom);
+                                        jamH := Round(Height * EffectiveJamZoom);
                                 end;
                         end;
 
@@ -4584,12 +5033,20 @@ begin
         if not FDrag.Active then
                 Exit;
 
-        // Throttle drag updates to ~60fps. Mice can fire MouseMove at 1000Hz;
-        // re-rendering each one wastes CPU and visual updates cap at screen
-        // refresh anyway. Final MouseUp position is always exact.
-        if GetTickCount - FLastDragTick < 16 then
-                Exit;
-        FLastDragTick := GetTickCount;
+        // Throttle drag renders to the monitor's refresh rate.
+        // QueryPerformanceCounter gives sub-millisecond precision so the
+        // interval is exactly right — no ±15ms jitter from GetTickCount.
+        // FDragFrameInterval is set from the real Hz in RefreshDPIFactor;
+        // FLastDragQPC = 0 the first time so the first frame is never skipped.
+        // The final position on MouseUp is always exact regardless.
+        if FDragFrameInterval > 0 then
+        begin
+                var now: Int64;
+                QueryPerformanceCounter(now);
+                if (FLastDragQPC > 0) and (now - FLastDragQPC < FDragFrameInterval) then
+                        Exit;
+                FLastDragQPC := now;
+        end;
 
         canvasPt := ScreenToCanvas(Point(X, Y));
         dx := canvasPt.X - FDrag.StartMouseX;
@@ -4934,24 +5391,37 @@ begin
         else
                 bmp := FJamFile.DrawFullJam(true);
 
-        newWidth := Round(bmp.Width * intJamZoom);
-        newHeight := Round(bmp.height * intJamZoom);
+        newWidth := Round(bmp.Width * EffectiveJamZoom);
+        newHeight := Round(bmp.height * EffectiveJamZoom);
+
+        lblCanvasSize.Caption := Format('%d x %d px', [bmp.Width, bmp.Height]);
+        if boolDPIScaling and (dblDPIFactor > 1.001) then
+                lblCanvasZoom.Caption := Format('Zoom: %d%% [DPI ×%.2g]',
+                  [Round(intJamZoom * 100), dblDPIFactor])
+        else
+                lblCanvasZoom.Caption := Format('Zoom: %d%%',
+                  [Round(intJamZoom * 100)]);
 
         try
                 scaledBMP := TBitmap.Create;
                 scaledBMP.height := newHeight;
                 scaledBMP.Width := newWidth;
 
-                SetStretchBltMode(scaledBMP.Canvas.Handle, HALFTONE);
+                SetStretchBltMode(scaledBMP.Canvas.Handle, COLORONCOLOR);
 
                 StretchBlt(scaledBMP.Canvas.Handle, 0, 0, newWidth, newHeight,
                   bmp.Canvas.Handle, 0, 0, bmp.Width, bmp.height, SRCCOPY);
 
-                if boolHWJAM = false then
-                        scaledBMP := FJamFile.DrawOutlines(scaledBMP);
+                if boolShowCheckerboard then
+                begin
+                        if boolHWJAM then
+                                ComposeCheckerboard(scaledBMP, TCol_TransGP3HW)
+                        else
+                                ComposeCheckerboard(scaledBMP,
+                                  RGB(gpxPal[0].r, gpxPal[0].g, gpxPal[0].b));
+                end;
 
-                if boolHWJAM = true then
-                        scaledBMP := FHWJamFile.DrawOutlines(scaledBMP);
+                ApplyOutlineOverlay(scaledBMP);
 
                 ImageCanvas.height := newHeight;
                 ImageCanvas.Width := newWidth;
@@ -5107,6 +5577,70 @@ begin
         boolFlagChange := true;
         for i := 0 to SelectedTextureList.Count - 1 do
                 UpdateJamData(SelectedTextureList[i]);
+end;
+
+procedure TFormMain.RebuildFlagsList;
+// Rebuilds the Texture Flags list based on boolShowAdvancedFlags.
+// When off: only the 10 named flags.
+// When on:  all 16 bit positions, with unknown ones labeled Flag 11..16.
+// After rebuild, checked state is re-synced from the currently selected
+// texture so visible boxes reflect the underlying jamFlags value.
+const
+        FLAG_NAMES_BASIC: array[0..9] of string = (
+                'Car Shadow (?)',
+                'Helmet Texture (?)',
+                'Flag 3',
+                'Transparent',
+                'Multi-Part Texture (?)',
+                'Multi-Part Texture (?)',
+                'Use Pit Crew Colours',
+                'No Local Palettes',
+                'Non-Standard Height',
+                'Non-Standard Width');
+var
+        i: Integer;
+        jamFlags: Word;
+        hasSel: Boolean;
+        prevUpdating: Boolean;
+begin
+        // Suppress OnClickCheck fire-back while we mutate the list
+        prevUpdating := UpdatingFromCode;
+        UpdatingFromCode := True;
+        try
+                tex_flags.Items.BeginUpdate;
+                try
+                        tex_flags.Items.Clear;
+                        for i := Low(FLAG_NAMES_BASIC) to High(FLAG_NAMES_BASIC) do
+                                tex_flags.Items.Add(FLAG_NAMES_BASIC[i]);
+                        if boolShowAdvancedFlags then
+                                for i := 11 to 16 do
+                                        tex_flags.Items.Add('Flag ' + IntToStr(i));
+                finally
+                        tex_flags.Items.EndUpdate;
+                end;
+
+                // Re-sync checked state from the selected texture, if any
+                hasSel := boolJamLoaded and (intSelectedTexture >= 0);
+                if hasSel then
+                begin
+                        if boolHWJAM then
+                                jamFlags := FHWJamFile.FEntries[intSelectedTexture].FInfo.jamFlags
+                        else
+                                jamFlags := FJamFile.FEntries[intSelectedTexture].FInfo.jamFlags;
+                        for i := 0 to tex_flags.Items.Count - 1 do
+                                tex_flags.Checked[i] := UnPackFlag(jamFlags, i);
+                end;
+        finally
+                UpdatingFromCode := prevUpdating;
+        end;
+end;
+
+procedure TFormMain.chkShowAdvancedFlagsClick(Sender: TObject);
+begin
+        if UpdatingFromCode then
+                Exit;
+        boolShowAdvancedFlags := chkShowAdvancedFlags.Checked;
+        RebuildFlagsList;
 end;
 
 procedure TFormMain.tex_heightChange(Sender: TObject);
@@ -5804,7 +6338,7 @@ begin
                 canvasHeight.Value := FHWJamFile.FHeader.JamTotalHeight;
 
                 tex_flags.Enabled := true;
-                for i := 0 to 15 do
+                for i := 0 to tex_flags.Items.Count - 1 do
                         tex_flags.Checked[i] :=
                           UnPackFlag(FHWJamFile.FEntries[id].FInfo.jamFlags, i);
 
@@ -5849,7 +6383,7 @@ begin
 
                 canvasHeight.Value := FJamFile.FHeader.JamTotalHeight;
 
-                for i := 0 to 15 do
+                for i := 0 to tex_flags.Items.Count - 1 do
                         tex_flags.Checked[i] :=
                           UnPackFlag(FJamFile.FEntries[id].FInfo.jamFlags, i);
 
@@ -6097,7 +6631,7 @@ begin
         tex_width.Value := 0;
         tex_height.Value := 0;
 
-        for i := 0 to 15 do
+        for i := 0 to tex_flags.Items.Count - 1 do
                 tex_flags.Checked[i] := false;
 
         texScale.Value := 0;
@@ -6191,11 +6725,11 @@ begin
 
                         if boolFlagChange then
                         begin
-                                for i := 0 to 15 do
+                                for i := 0 to tex_flags.Items.Count - 1 do
                                         changedFlags[i] := tex_flags.Checked[i]
                                         <> UnPackFlag(FInfo.jamFlags, i);
 
-                                for i := 0 to 15 do
+                                for i := 0 to tex_flags.Items.Count - 1 do
                                         if changedFlags[i] then
                                         if tex_flags.Checked[i] then
                                         FInfo.jamFlags :=
@@ -6254,11 +6788,11 @@ begin
 
                         if boolFlagChange then
                         begin
-                                for i := 0 to 15 do
+                                for i := 0 to tex_flags.Items.Count - 1 do
                                         changedFlags[i] := tex_flags.Checked[i]
                                         <> UnPackFlag(FInfo.jamFlags, i);
 
-                                for i := 0 to 15 do
+                                for i := 0 to tex_flags.Items.Count - 1 do
                                         if changedFlags[i] then
                                         if tex_flags.Checked[i] then
                                         FInfo.jamFlags :=

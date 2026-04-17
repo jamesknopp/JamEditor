@@ -7,7 +7,7 @@ uses
   System.Generics.Collections,
   System.Classes, Vcl.Dialogs, Vcl.Graphics,
   Vcl.Controls, Vcl.Forms, Vcl.StdCtrls, Vcl.NumberBox, Vcl.Samples.Spin,
-  Vcl.ExtCtrls, Vcl.ComCtrls, Vcl.ToolWin,
+  System.Threading, Vcl.ExtCtrls, Vcl.ComCtrls, Vcl.ToolWin,
   jamGeneral, jamPaletteDetector, jamSW, jamHW, System.types, strutils,
   Vcl.Menus, generalhelpers, System.Win.Registry, Winapi.ShellAPI;
 
@@ -128,10 +128,10 @@ type
     FBatchTotal: integer;
     FBatchDone: integer;
     FBatchFailed: integer;
-    // Set by btnCancelClick; read by ConvertJam between items to abort
-    // the run cleanly. ConvertJam loops on the main thread pumping messages,
-    // so the click handler and the loop both run on the UI thread — no
-    // interlock needed.
+    // Set by btnCancelClick (UI thread); read by the TTask worker loop
+    // between items. Plain Boolean reads/writes are atomic on x86/x64
+    // so no interlock is needed for this one-shot signalling use — the
+    // worst case is a one-iteration delay before the worker notices.
     FCancelRequested: Boolean;
     FBatchRunning: Boolean;
     FLastRunSummary: string;
@@ -158,6 +158,12 @@ type
     function StatusText(S: TJamBatchStatus): string;
     procedure ClearCompletedItems;
     procedure UpdateUIState;
+    // Queue-from-worker helpers. Pass Item + NewStatus as parameters so
+    // each call's values are captured per-invocation — the closure would
+    // otherwise alias the loop variable in the caller and misreport.
+    procedure QueueStatusChange(Item: TJamBatchItem;
+      NewStatus: TJamBatchStatus);
+    procedure QueueItemComplete(Item: TJamBatchItem; Success: Boolean);
     // Remember last folder per dialog type (add-files, scan-folder, output)
     // in the existing HKCU\Software\JKVFX\JamEditor key. Values are written
     // immediately when the user picks a folder, so they persist even if the
@@ -724,19 +730,41 @@ begin
   end;
 end;
 
+procedure TJamBatchForm.QueueStatusChange(Item: TJamBatchItem;
+  NewStatus: TJamBatchStatus);
+begin
+  TThread.Queue(nil,
+    procedure
+    begin
+      SetItemStatus(Item, NewStatus);
+    end);
+end;
+
+procedure TJamBatchForm.QueueItemComplete(Item: TJamBatchItem; Success: Boolean);
+begin
+  TThread.Queue(nil,
+    procedure
+    begin
+      if Success then
+        SetItemStatus(Item, bsDone)
+      else
+      begin
+        SetItemStatus(Item, bsFailed);
+        Inc(FBatchFailed);
+      end;
+      Inc(FBatchDone);
+      UpdateBatchProgress;
+    end);
+end;
+
 procedure TJamBatchForm.ConvertJam;
-// Synchronous main-thread loop. The HW->SW path uses VCL TBitmap/GDI BitBlt
-// which isn't thread-safe (GDI DCs are thread-affine), so running on a
-// worker thread produced ERROR_INVALID_HANDLE from BitBlt. Converting
-// here and pumping messages between items keeps the UI responsive without
-// touching GDI off-thread.
+// See the big comment inside the TTask.Run block for the threading
+// rationale.
 var
   pendingList: TList<TJamBatchItem>;
   items: TArray<TJamBatchItem>;
   doPalette: Boolean;
-  it, current: TJamBatchItem;
-  i, j, succeeded: integer;
-  ok: Boolean;
+  it: TJamBatchItem;
 begin
   if BatchList.Count = 0 then Exit;
 
@@ -768,72 +796,95 @@ begin
   btnCancel.Enabled := True;
   btnRun.Enabled := False;
 
-  // Main-thread loop. VCL/GDI code in the HW->SW conversion path (notably
-  // THWJamFile.DrawSingleTexture's BitBlt) isn't thread-safe; running here
-  // avoids ERROR_INVALID_HANDLE / silent BitBlt failures that appeared
-  // under TTask. Application.ProcessMessages keeps the form responsive so
-  // Cancel and redraws still work.
-  try
-    for i := 0 to High(items) do
+  // Run the conversion loop on a single worker thread via TTask.Run.
+  //
+  // Why not TParallel.For / multiple workers: the conversion code still
+  // touches shared globals (gpxPal, intPaletteID, boolRcrJam, the palette
+  // detector singleton). One worker at a time keeps those globals from
+  // being contested. True parallelism is a separate, larger refactor.
+  //
+  // Why run on a worker at all, if the conversion is still serial: keeping
+  // the long-running loop off the UI thread lets the VCL paint/click
+  // pipeline run uninterrupted — the list repaints smoothly, Cancel clicks
+  // are instant, and we don't have to sprinkle ProcessMessages through the
+  // loop (which was noticeably slower).
+  //
+  // GDI safety: THWJamFile.DrawSingleTexture no longer uses BitBlt — it
+  // copies pixels with ScanLine+Move, so worker-thread use is safe.
+  //
+  // User must not touch the main editor window while a batch is running,
+  // because the globals above are shared process-wide. UpdateUIState
+  // locks down the batch dialog itself during a run, but can't disable
+  // the main form — keep that in mind if the user reports weird palette
+  // glitches during a batch.
+  TTask.Run(
+    procedure
+    var
+      i: integer;
+      current: TJamBatchItem;
+      ok: Boolean;
     begin
-      // Pump the message queue so clicks on Cancel get through and the
-      // ListView can repaint between items.
-      Application.ProcessMessages;
-      if FCancelRequested then
-      begin
-        // Reset any still-pending items back to idle so they're not
-        // stranded showing "Pending" when the run stops early.
-        for j := i to High(items) do
-          if items[j].status = bsPending then
-            SetItemStatus(items[j], bsIdle);
-        Break;
-      end;
-
-      current := items[i];
-      SetItemStatus(current, bsProcessing);
-      // Force a repaint before the long call so the user sees which item
-      // is in flight.
-      Application.ProcessMessages;
-
-      ok := False;
       try
-        ConvertSingleItem(current, doPalette);
-        ok := True;
-      except
-        on E: Exception do
-          OutputDebugString(PChar(Format(
-            'Batch: conversion failed for %s: %s',
-            [current.filepath, E.Message])));
-      end;
+        for i := 0 to High(items) do
+        begin
+          if FCancelRequested then
+          begin
+            // Roll any still-queued items back to Idle on the UI thread so
+            // they don't sit forever showing "Pending".
+            TThread.Queue(nil,
+              procedure
+              var
+                k: integer;
+              begin
+                for k := i to High(items) do
+                  if items[k].status = bsPending then
+                    SetItemStatus(items[k], bsIdle);
+              end);
+            Break;
+          end;
 
-      if ok then
-        SetItemStatus(current, bsDone)
-      else
-      begin
-        SetItemStatus(current, bsFailed);
-        Inc(FBatchFailed);
+          current := items[i];
+          QueueStatusChange(current, bsProcessing);
+
+          ok := False;
+          try
+            ConvertSingleItem(current, doPalette);
+            ok := True;
+          except
+            on E: Exception do
+              OutputDebugString(PChar(Format(
+                'Batch: conversion failed for %s: %s',
+                [current.filepath, E.Message])));
+          end;
+
+          QueueItemComplete(current, ok);
+        end;
+      finally
+        // Finalise on the UI thread — touch VCL state from here only.
+        TThread.Queue(nil,
+          procedure
+          var
+            succeeded: integer;
+          begin
+            FBatchRunning := False;
+            btnCancel.Enabled := False;
+            succeeded := FBatchDone - FBatchFailed;
+            if FCancelRequested then
+              FLastRunSummary := Format('Cancelled: %d / %d done',
+                [FBatchDone, FBatchTotal])
+            else if FBatchFailed > 0 then
+              FLastRunSummary := Format('Finished: %d ok, %d failed',
+                [succeeded, FBatchFailed])
+            else
+              FLastRunSummary := Format('Finished: %d / %d ok',
+                [succeeded, FBatchTotal]);
+            pbBatch.Visible := False;
+            lblProgress.Visible := True;
+            lblProgress.Caption := FLastRunSummary;
+            UpdateUIState;
+          end);
       end;
-      Inc(FBatchDone);
-      UpdateBatchProgress;
-    end;
-  finally
-    FBatchRunning := False;
-    btnCancel.Enabled := False;
-    succeeded := FBatchDone - FBatchFailed;
-    if FCancelRequested then
-      FLastRunSummary := Format('Cancelled: %d / %d done',
-        [FBatchDone, FBatchTotal])
-    else if FBatchFailed > 0 then
-      FLastRunSummary := Format('Finished: %d ok, %d failed',
-        [succeeded, FBatchFailed])
-    else
-      FLastRunSummary := Format('Finished: %d / %d ok',
-        [succeeded, FBatchTotal]);
-    pbBatch.Visible := False;
-    lblProgress.Visible := True;
-    lblProgress.Caption := FLastRunSummary;
-    UpdateUIState;
-  end;
+    end);
 end;
 
 procedure TJamBatchForm.DeleteItems1Click(Sender: TObject);

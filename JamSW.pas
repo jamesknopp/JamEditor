@@ -139,8 +139,6 @@ type
 
     procedure DrawBaseCanvas(clean: boolean);
 
-    function DrawOutlines(JamCanvas: TBitmap): TBitmap;
-
     procedure UpdateTextureSize(JamId: integer; Height: integer;
       Width: integer);
 
@@ -1776,59 +1774,6 @@ begin
   except
     Result.free;
     raise;
-  end;
-end;
-
-function TJamFile.DrawOutlines(JamCanvas: TBitmap): TBitmap;
-var
-  i: integer;
-  tmpBMP: TBitmap;
-  tempX, tempY: integer;
-begin
-  if not boolDrawOutlines then
-    exit(JamCanvas);
-
-  // Clone
-  tmpBMP := TBitmap.Create;
-  tmpBMP.Assign(JamCanvas);
-  try
-    // Draw on the clone
-    for i := 0 to FEntries.Count - 1 do
-    begin
-      // Drag-preview: skip outline for the moving entry
-      if i = intDragSkipEntry then
-        Continue;
-      with FEntries[i].Info do
-      begin
-        tempX := X;
-        tempY := Y;
-
-        if boolRcrJam then
-        begin
-          if Y mod 2 <> 0 then
-          begin
-            // prevY := FEntries[i - 1].FInfo.Y;
-            tempY := tempY - 1;
-            tempX := tempX + 256;
-          end
-          else
-          begin
-            tempY := Y;
-            tempX := X;
-          end;
-
-          tempY := tempY div 2;
-          DrawTextureOutlines(tmpBMP, tempX, tempY, Width * 2, Height, i, JamId)
-        end
-        else
-          DrawTextureOutlines(tmpBMP, X, Y, Width, Height, i, JamId);
-      end;
-    end;
-    // Hand ownership to the caller
-    Result := tmpBMP;
-    tmpBMP := nil;
-  finally
-    tmpBMP.free; // frees only if an exception occurred
   end;
 end;
 

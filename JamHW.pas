@@ -82,7 +82,6 @@ type
 
     function DrawCanvas(uiUpdate: boolean): TBitmap;
     function DrawSingleTexture(JamId: integer): TBitmap;
-    function DrawOutlines(JamCanvas: TBitmap): TBitmap;
 
     procedure ConvertGPxJam(origJamPath: string);
 
@@ -772,9 +771,29 @@ begin
 end;
 
 function THWJamFile.DrawSingleTexture(JamId: integer): TBitmap;
+// Copy a rectangular region out of CanvasBitmap into a fresh TBitmap.
+//
+// We used to call BitBlt here, but BitBlt goes through GDI and its device
+// contexts are thread-affine — calling from a worker thread returned FALSE
+// with ERROR_INVALID_HANDLE. Moving to ScanLine + Move makes the copy a
+// pure-memory operation: no GDI, no DCs, no cross-thread handle issues,
+// and no Canvas.Lock needed. It's also a touch faster for small rects
+// because there's no per-call GDI overhead.
+//
+// Preconditions (relied on by the caller and enforced here):
+//   - CanvasBitmap is fully loaded and its DIB is allocated (first
+//     ScanLine[] call materialises it). If this is called from multiple
+//     threads for the first time on the same instance, see the note in
+//     ConvertGPxJam about priming.
+//   - Each thread creates its own dst bitmap — we never share a dst.
+//   - Source and dst share a PixelFormat, so rows are byte-compatible.
 var
   w, H, x, y: integer;
   dst: TBitmap;
+  bytesPerPixel: integer;
+  rowBytes: integer;
+  srcRow, dstRow: PByte;
+  row: integer;
 begin
   // 1) Pull out rectangle info
   w := FEntries[JamId].FInfo.width;
@@ -782,54 +801,64 @@ begin
   x := FEntries[JamId].FInfo.x;
   y := FEntries[JamId].FInfo.y;
 
-  // 2) Sanity‐check
+  // 2) Sanity-check inputs
   if (w <= 0) or (H <= 0) then
     raise Exception.CreateFmt('Invalid texture size %dx%d for entry %d',
       [w, H, JamId]);
 
-  // 3) Create and ensure it gets freed on error
+  if CanvasBitmap = nil then
+    raise Exception.Create('DrawSingleTexture: CanvasBitmap is nil');
+
+  // 3) Determine bytes-per-pixel from the source format. We only handle
+  //    the formats the loader actually produces — anything else is a bug.
+  case CanvasBitmap.PixelFormat of
+    pf8bit:  bytesPerPixel := 1;
+    pf15bit, pf16bit: bytesPerPixel := 2;
+    pf24bit: bytesPerPixel := 3;
+    pf32bit: bytesPerPixel := 4;
+  else
+    raise Exception.CreateFmt(
+      'DrawSingleTexture: unsupported PixelFormat %d',
+      [Ord(CanvasBitmap.PixelFormat)]);
+  end;
+
+  // 4) Bounds-check the rectangle against the source bitmap so we don't
+  //    stray past the end of a ScanLine row.
+  if (x < 0) or (y < 0)
+     or (x + w > CanvasBitmap.Width)
+     or (y + H > CanvasBitmap.Height) then
+    raise Exception.CreateFmt(
+      'DrawSingleTexture: rect (%d,%d,%dx%d) out of bounds for canvas %dx%d',
+      [x, y, w, H, CanvasBitmap.Width, CanvasBitmap.Height]);
+
+  rowBytes := w * bytesPerPixel;
+
+  // 5) Allocate dst and copy, freeing on any error.
   dst := TBitmap.Create;
   try
-    dst.Canvas.lock;
     dst.PixelFormat := CanvasBitmap.PixelFormat;
-    dst.width := w;
-    dst.height := H;
+    dst.SetSize(w, H);
 
-    // 4) Copy pixels
-    if not BitBlt(dst.Canvas.Handle, 0, 0, w, H, CanvasBitmap.Canvas.Handle, x,
-      y, SRCCOPY) then
-      raise Exception.Create('BitBlt failed in DrawSingleTexture');
+    // Palette-indexed formats must share the colour table, otherwise the
+    // pixel indices in the copied rows point into the wrong RGB entries.
+    if CanvasBitmap.PixelFormat = pf8bit then
+      dst.Palette := CopyPalette(CanvasBitmap.Palette);
 
-    // 5) Hand off ownership
-    dst.Canvas.Unlock;
+    // Copy row-by-row. Each ScanLine call returns a pointer to that row's
+    // start (bitmap stride may be padded, but the ScanLine step already
+    // accounts for that, so we never need to compute padding ourselves).
+    for row := 0 to H - 1 do
+    begin
+      srcRow := PByte(CanvasBitmap.ScanLine[y + row]);
+      Inc(srcRow, x * bytesPerPixel); // seek into the source row
+      dstRow := PByte(dst.ScanLine[row]);
+      Move(srcRow^, dstRow^, rowBytes);
+    end;
+
     Result := dst;
-    dst := nil; // prevent the finally block from freeing it
+    dst := nil; // prevent the finally block from freeing the handed-off bitmap
   finally
-    dst.free; // frees only if an exception occurred or Dst wasn't handed off
-  end;
-end;
-
-function THWJamFile.DrawOutlines(JamCanvas: TBitmap): TBitmap;
-var
-  i: integer;
-  tmpBMP: TBitmap;
-begin
-  if not boolDrawOutlines then
-    Exit(JamCanvas);
-
-  // Clone the source
-  tmpBMP := TBitmap.Create;
-  tmpBMP.Assign(JamCanvas);
-  try
-    // Draw outlines on the clone
-    for i := 0 to FEntries.Count - 1 do
-      with FEntries[i].FInfo do
-        DrawTextureOutlines(tmpBMP, x, y, width, height, i, JamId);
-
-    Result := tmpBMP;
-    tmpBMP := nil; // ownership transferred to Result
-  finally
-    tmpBMP.free; // frees only if an exception occurred
+    dst.Free;
   end;
 end;
 

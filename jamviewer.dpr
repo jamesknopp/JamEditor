@@ -3,6 +3,11 @@ program JamViewer;
 {$R *.dres}
 
 uses
+  madExcept,
+  madLinkDisAsm,
+  madListHardware,
+  madListProcesses,
+  madListModules,
   Vcl.Forms,
   mainform in 'mainform.pas' {FormMain},
   JamGeneral in 'JamGeneral.pas',

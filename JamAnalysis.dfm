@@ -2,9 +2,11 @@ object frmJamAnalysis: TfrmJamAnalysis
   Left = 0
   Top = 0
   Caption = 'Jam Analysis'
-  ClientHeight = 677
-  ClientWidth = 1227
+  ClientHeight = 720
+  ClientWidth = 1240
   Color = clBtnFace
+  Constraints.MinHeight = 500
+  Constraints.MinWidth = 960
   Font.Charset = DEFAULT_CHARSET
   Font.Color = clWindowText
   Font.Height = -12
@@ -14,33 +16,31 @@ object frmJamAnalysis: TfrmJamAnalysis
   RoundedCorners = rcOn
   OnCreate = FormCreate
   OnDestroy = FormDestroy
+  OnShow = FormShow
   TextHeight = 15
   object Splitter1: TSplitter
     Left = 0
-    Top = 353
-    Width = 1227
-    Height = 3
+    Top = 380
+    Width = 1240
+    Height = 4
     Cursor = crVSplit
     Align = alTop
-    ExplicitLeft = 11
-    ExplicitTop = 11
-    ExplicitWidth = 890
+    ResizeStyle = rsUpdate
   end
   object Panel1: TPanel
     Left = 0
     Top = 0
-    Width = 1227
-    Height = 353
+    Width = 1240
+    Height = 380
     Align = alTop
-    BorderWidth = 10
-    Caption = 'Panel1'
+    BevelOuter = bvNone
+    BorderWidth = 6
     TabOrder = 0
-    ExplicitWidth = 1221
     object jamlistview: TEasyListview
-      Left = 11
-      Top = 11
-      Width = 1205
-      Height = 331
+      Left = 6
+      Top = 6
+      Width = 1228
+      Height = 368
       Align = alClient
       CacheDoubleBufferBits = True
       CellSizes.ReportThumb.Height = 135
@@ -199,6 +199,7 @@ object frmJamAnalysis: TfrmJamAnalysis
       PaintInfoGroup.MarginBottom.CaptionIndent = 4
       PaintInfoItem.GridLines = True
       ParentFont = False
+      PopupMenu = jamAnalysisPopup
       Selection.FullRowSelect = True
       Sort.AutoSort = True
       TabOrder = 0
@@ -207,166 +208,215 @@ object frmJamAnalysis: TfrmJamAnalysis
       OnItemFreeing = jamlistviewItemFreeing
       OnItemImageDraw = jamlistviewItemImageDraw
       OnItemSelectionChanged = jamlistviewItemSelectionChanged
+      OnDblClick = jamlistviewDblClick
     end
   end
   object Panel2: TPanel
     Left = 0
-    Top = 356
-    Width = 1227
-    Height = 321
+    Top = 384
+    Width = 1240
+    Height = 292
     Align = alClient
+    BevelOuter = bvNone
+    BorderWidth = 8
     TabOrder = 1
-    ExplicitWidth = 1221
-    ExplicitHeight = 304
-    object jamLoading: TLabel
-      Left = 1006
-      Top = 152
-      Width = 63
-      Height = 15
-      Caption = 'jamLoading'
-      Visible = False
-    end
     object GroupBox1: TGroupBox
-      Left = 11
-      Top = 6
-      Width = 278
-      Height = 307
+      Left = 8
+      Top = 8
+      Width = 288
+      Height = 276
+      Align = alLeft
       Caption = 'Texture Preview'
       TabOrder = 0
       object texPreview: TImage
-        Left = 11
-        Top = 27
-        Width = 256
-        Height = 256
+        Left = 12
+        Top = 22
+        Width = 264
+        Height = 248
+        Align = alClient
+        Center = True
         Proportional = True
         Stretch = True
+        ExplicitLeft = 11
+        ExplicitTop = 27
+        ExplicitWidth = 256
+        ExplicitHeight = 256
       end
     end
     object scanGroup: TGroupBox
-      Left = 295
-      Top = 6
-      Width = 575
-      Height = 307
+      Left = 304
+      Top = 8
+      Width = 928
+      Height = 276
+      Align = alClient
       Caption = 'Scan Options'
       TabOrder = 1
       object Label1: TLabel
         Left = 16
-        Top = 40
+        Top = 28
         Width = 78
         Height = 15
         Caption = 'Folder to Scan:'
       end
       object strFolder: TEdit
         Left = 16
-        Top = 61
-        Width = 546
+        Top = 48
+        Width = 780
         Height = 23
         TabOrder = 0
         OnChange = strFolderChange
       end
-      object Button2: TButton
-        Left = 16
-        Top = 92
-        Width = 545
-        Height = 25
-        Caption = 'Browse for Folder'
+      object btnBrowseFolder: TButton
+        Left = 802
+        Top = 46
+        Width = 110
+        Height = 27
+        Caption = 'Browse...'
         TabOrder = 1
         OnClick = Button2Click
       end
-      object chkSubfolders: TCheckBox
+      object optionsGroup: TGroupBox
         Left = 16
-        Top = 136
-        Width = 121
-        Height = 17
-        Caption = 'Scan Subfolders'
+        Top = 84
+        Width = 896
+        Height = 80
+        Caption = 'Options'
         TabOrder = 2
-      end
-      object btnScanFolder: TButton
-        Left = 400
-        Top = 248
-        Width = 161
-        Height = 33
-        Caption = 'Scan Custom Folder'
-        TabOrder = 3
-        OnClick = btnScanFolderClick
+        object chkSubfolders: TCheckBox
+          Left = 16
+          Top = 24
+          Width = 160
+          Height = 18
+          Caption = 'Include sub-folders'
+          TabOrder = 0
+        end
+        object chkSoftware: TCheckBox
+          Left = 16
+          Top = 48
+          Width = 210
+          Height = 18
+          Caption = 'Scan for Software JAMs'
+          Checked = True
+          State = cbChecked
+          TabOrder = 1
+        end
+        object chkHardware: TCheckBox
+          Left = 232
+          Top = 48
+          Width = 210
+          Height = 18
+          Caption = 'Scan for Hardware JAMs'
+          Checked = True
+          State = cbChecked
+          TabOrder = 2
+        end
+        object chkClearList: TCheckBox
+          Left = 460
+          Top = 48
+          Width = 200
+          Height = 18
+          Caption = 'Clear list on new scan'
+          Checked = True
+          State = cbChecked
+          TabOrder = 3
+        end
       end
       object btnScanGP2: TButton
-        Left = 15
-        Top = 248
-        Width = 106
+        Left = 16
+        Top = 184
+        Width = 150
         Height = 33
         Caption = 'Scan GP2 Folder'
-        TabOrder = 4
+        TabOrder = 3
         OnClick = btnScanGP2Click
       end
       object btnScanGP3: TButton
-        Left = 136
-        Top = 248
-        Width = 105
+        Left = 172
+        Top = 184
+        Width = 150
         Height = 33
         Caption = 'Scan GP3 Folder'
-        TabOrder = 5
+        TabOrder = 4
         OnClick = btnScanGP3Click
       end
       object scanGP32K: TButton
-        Left = 256
-        Top = 248
-        Width = 129
+        Left = 328
+        Top = 184
+        Width = 180
         Height = 33
         Caption = 'Scan GP3 2000 Folder'
-        TabOrder = 6
+        TabOrder = 5
         OnClick = scanGP32KClick
       end
-      object chkSoftware: TCheckBox
-        Left = 16
-        Top = 168
-        Width = 185
-        Height = 17
-        Caption = 'Scan for Software JAMs'
-        Checked = True
-        State = cbChecked
-        TabOrder = 7
+      object btnScanFolder: TButton
+        Left = 514
+        Top = 184
+        Width = 180
+        Height = 33
+        Caption = 'Scan Custom Folder'
+        TabOrder = 6
+        OnClick = btnScanFolderClick
       end
-      object chkHardware: TCheckBox
-        Left = 16
-        Top = 200
-        Width = 185
-        Height = 17
-        Caption = 'Scan for Hardware JAMs'
-        Checked = True
-        State = cbChecked
-        TabOrder = 8
-      end
-      object chkClearList: TCheckBox
-        Left = 224
-        Top = 136
-        Width = 241
-        Height = 17
-        Caption = 'Clear List on new Scan'
-        Checked = True
-        State = cbChecked
-        TabOrder = 9
-      end
+    end
+  end
+  object StatusBarPanel: TPanel
+    Left = 0
+    Top = 676
+    Width = 1240
+    Height = 44
+    Align = alBottom
+    BevelOuter = bvNone
+    BorderWidth = 8
+    TabOrder = 2
+    object jamLoading: TLabel
+      Left = 132
+      Top = 14
+      Width = 40
+      Height = 15
+      Caption = 'Ready'
+    end
+    object btnCancel: TButton
+      Left = 8
+      Top = 8
+      Width = 110
+      Height = 27
+      Caption = 'Cancel'
+      Enabled = False
+      TabOrder = 0
+      OnClick = Button1Click
     end
     object ProgressBar: TProgressBar
-      Left = 912
-      Top = 120
-      Width = 296
-      Height = 26
+      Left = 380
+      Top = 12
+      Width = 844
+      Height = 20
+      Anchors = [akLeft, akTop, akRight]
       Smooth = True
       Step = 1
-      TabOrder = 2
+      TabOrder = 1
       Visible = False
-      StyleName = 'Windows'
     end
-    object Button1: TButton
-      Left = 912
-      Top = 256
-      Width = 296
-      Height = 33
-      Caption = 'Cancel'
-      TabOrder = 3
-      OnClick = Button1Click
+  end
+  object jamAnalysisPopup: TPopupMenu
+    OnPopup = jamAnalysisPopupPopup
+    Left = 880
+    Top = 80
+    object mnuOpenFolder: TMenuItem
+      Caption = 'Open Containing Folder'
+      Enabled = False
+      OnClick = mnuOpenFolderClick
+    end
+    object mnuCopyPath: TMenuItem
+      Caption = 'Copy File Path'
+      Enabled = False
+      OnClick = mnuCopyPathClick
+    end
+    object N1: TMenuItem
+      Caption = '-'
+    end
+    object mnuClearList: TMenuItem
+      Caption = 'Clear List'
+      OnClick = mnuClearListClick
     end
   end
 end

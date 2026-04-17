@@ -170,9 +170,17 @@ var
 
   intJamZoom: double;
 
+  // DPI-aware scaling.  dblDPIFactor is set once at startup from the monitor's
+  // logical DPI (Screen.PixelsPerInch / 96).  EffectiveJamZoom() combines it
+  // with the user-controlled intJamZoom whenever boolDPIScaling is enabled.
+  boolDPIScaling: Boolean;
+  dblDPIFactor: Double;
+
   boolDrawOutlines: Boolean;
   boolMoveToolActive: Boolean;
   boolSnapEnabled: Boolean;
+  boolShowCheckerboard: Boolean;
+  boolShowAdvancedFlags: Boolean;
   // If >= 0, DrawFullJam / DrawOutlines skips this entry index. Used by
   // the move tool to capture a "pristine" background without the moving
   // texture so its new position can be composited cleanly.
@@ -222,6 +230,10 @@ function ReplaceTransparentColour(const Bmp: TBitmap;
 function DrawTextureOutlines(jamCanvas: TBitmap; X: Integer; Y: Integer;
   Width: Integer; Height: Integer; i: Integer; JamID: Integer): TBitmap;
 
+// Returns intJamZoom multiplied by the monitor DPI factor when DPI scaling
+// is active, otherwise returns intJamZoom unchanged.
+function EffectiveJamZoom: Double;
+
 function UnPackRGB565(raw: Word): TColor;
 function PackRGB565(Color: TColor): Word;
 
@@ -246,6 +258,14 @@ function PackRects(var Rects: TArray<TJamRect>; CanvasWidth: Integer;
 implementation
 
 uses MainForm;
+
+function EffectiveJamZoom: Double;
+begin
+  if boolDPIScaling and (dblDPIFactor > 0) then
+    Result := intJamZoom * dblDPIFactor
+  else
+    Result := intJamZoom;
+end;
 
 function DrawTextureOutlines(jamCanvas: TBitmap; X: Integer; Y: Integer;
   Width: Integer; Height: Integer; i: Integer; JamID: Integer): TBitmap;
@@ -294,10 +314,10 @@ begin
 
   jamCanvas.Canvas.lock;
   try
-    w := round(Width * intJamZoom);
-    h := round(Height * intJamZoom);
-    Y := round(Y * intJamZoom);
-    X := round(X * intJamZoom);
+    w := round(Width * EffectiveJamZoom);
+    h := round(Height * EffectiveJamZoom);
+    Y := round(Y * EffectiveJamZoom);
+    X := round(X * EffectiveJamZoom);
 
     // Move tool active + selected texture -> Photoshop-style handles
     if boolMoveToolActive and isSelected then
@@ -348,7 +368,7 @@ begin
     jamCanvas.Canvas.Rectangle(X, Y, X + w, Y + h);
 
     jamCanvas.Canvas.font.IsScreenFont := True;
-    jamCanvas.Canvas.font.size := min(12, Max(5, round(5 * intJamZoom)));
+    jamCanvas.Canvas.font.size := min(12, Max(5, round(5 * EffectiveJamZoom)));
     jamCanvas.Canvas.font.Quality := fqClearTypeNatural;
     jamCanvas.Canvas.font.name := 'Segoe UI';
 
