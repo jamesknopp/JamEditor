@@ -14,6 +14,7 @@ uses
         Vcl.VirtualImageList, System.Generics.Collections,
 
         JamGeneral, JamSW, JamHW, JamPalette, JamAnalysis, GeneralHelpers,
+        RCRRender, RCRPreview,
         newJamDlg,
         Vcl.Samples.Spin, Vcl.CheckLst, Vcl.ToolWin, Vcl.BaseImageCollection,
         System.ImageList, jampalettedetector, jambatch, options, about;
@@ -189,6 +190,7 @@ type
                 rcrOdd: TButton;
                 rcrEven: TButton;
                 rcrReset: TButton;
+                btnRenderCar: TButton;
                 panel_TexScaling: TPanel;
                 Label13: TLabel;
                 Label14: TLabel;
@@ -255,6 +257,7 @@ type
                 procedure rcrOddClick(Sender: TObject);
                 procedure rcrEvenClick(Sender: TObject);
                 procedure rcrResetClick(Sender: TObject);
+                procedure btnRenderCarClick(Sender: TObject);
                 procedure AddNewTexture(Sender: TObject);
                 procedure JamTreeDeletion(Sender: TObject; Node: TTreeNode);
                 procedure JamTreeAdvancedCustomDrawItem(Sender: TCustomTreeView;
@@ -3293,6 +3296,21 @@ begin
         boolRCRDrawMode := false;
         RefreshCanvas;
         DrawTexture;
+end;
+
+procedure TFormMain.btnRenderCarClick(Sender: TObject);
+var
+  frm: TRCRPreviewForm;
+begin
+  frm := TRCRPreviewForm.Create(Self);
+  try
+    // Pre-select the currently loaded RCR angle if one is open
+    if boolJamLoaded and boolRcrJam and Assigned(FJamFile) then
+      frm.PreselectedAngle := FJamFile.JamFileName;
+    frm.ShowModal;
+  finally
+    frm.Free;
+  end;
 end;
 
 procedure TFormMain.btnGenPalClick(Sender: TObject);

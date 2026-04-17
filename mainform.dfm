@@ -3239,7 +3239,6 @@ object FormMain: TFormMain
       DoubleBuffered = False
       ParentDoubleBuffered = False
       TabOrder = 6
-      Visible = False
       StyleName = 'Windows'
       OnCollapse = panel_RCRControlsCollapse
       OnExpand = panel_RCRControlsExpand
@@ -3291,10 +3290,22 @@ object FormMain: TFormMain
           TabOrder = 2
           OnClick = rcrResetClick
         end
+        object btnRenderCar: TButton
+          Left = 16
+          Top = 76
+          Width = 106
+          Height = 29
+          Hint = 
+            'Render car sprite using ferrari.bmp, chassis.bmp and tyre textur' +
+            'e'
+          Caption = 'Render Car'
+          TabOrder = 3
+          OnClick = btnRenderCarClick
+        end
       end
       object Button1: TButton
-        Left = 24
-        Top = 76
+        Left = 64
+        Top = 66
         Width = 75
         Height = 25
         Caption = 'Greyscale Tex'
@@ -3302,8 +3313,8 @@ object FormMain: TFormMain
         OnClick = Button1Click
       end
       object Button2: TButton
-        Left = 113
-        Top = 76
+        Left = 145
+        Top = 60
         Width = 96
         Height = 25
         Caption = 'Re Gen RCR'

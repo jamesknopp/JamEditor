@@ -69,6 +69,11 @@ type
 
     originalCanvas: TBitmap;
 
+    // Companion mask bitmap for RCR car sprites (loaded from rcr1b, rcr2b, etc.)
+    // pf8bit indexed; each pixel value is the segmentation mask index (0-11).
+    // Nil if no companion mask file was found.
+    rcrMask: TBitmap;
+
     function UnJam(const Data: TBytes): TBytes;
     constructor Create;
     destructor Destroy; override;
@@ -138,6 +143,19 @@ type
     function RenderJamCanvas(UIUpdate: boolean): TBitmap;
 
     procedure DrawBaseCanvas(clean: boolean);
+
+    // Load the companion mask JAM (e.g. rcr1b alongside rcr1a).
+    // Extracts the raw canvas as a pf8bit bitmap into rcrMask.
+    // Returns True if the mask file was found and loaded successfully.
+    function LoadRCRMask(const MaskPath: string): boolean;
+
+    // Extract the full-canvas A (even, odd=False) or B (odd=True) plane
+    // directly from FRawData as a pf8bit indexed bitmap (256 x canvasHeight).
+    // Each pixel stores the raw UV index value (0-255).
+    // FRawData layout: canvasHeight rows x 512 bytes/row;
+    //   even bytes = A plane, odd bytes = B plane.
+    //   X0 = FInfo.X (+256 for odd-Y entries) selects left/right raw half.
+    function ExtractRCRPlaneRaw(odd: boolean): TBitmap;
 
     function DrawOutlines(JamCanvas: TBitmap): TBitmap;
 
@@ -391,6 +409,7 @@ constructor TJamFile.Create;
 begin
   FEntries := TList<TJamEntry>.Create;
   boolRcrJam := False;
+  rcrMask := nil;
 
   // CanvasBitmap := TBitmap.Create;
   canvasHeight := 256;
@@ -425,6 +444,9 @@ begin
 
   if assigned(originalCanvas) then
     FreeAndNil(originalCanvas);
+
+  if assigned(rcrMask) then
+    freeAndNil(rcrMask);
 
   inherited;
 end;
@@ -768,6 +790,17 @@ begin
 
   JamFileName := sFilename;
   JamFullPath := FileName;
+
+  // Auto-load companion mask for car RCR sprites (rcr1a -> rcr1b, rcr2a -> rcr2b, etc.)
+  // The mask file is a normal (non-RCR) JAM in the same directory.
+  if boolRcrJam and (Length(sFilename) > 1) and
+     (sFilename[Length(sFilename)] = 'a') then
+  begin
+    var maskBase := Copy(sFilename, 1, Length(sFilename) - 1) + 'b';
+    var maskPath := IncludeTrailingPathDelimiter(ExtractFilePath(FileName))
+                  + maskBase + ExtractFileExt(FileName);
+    LoadRCRMask(maskPath);
+  end;
 
   Result := True;
 end;
@@ -2692,6 +2725,151 @@ begin
 
   finally
     JamBMP.free;
+  end;
+end;
+
+// ---------------------------------------------------------------------------
+//  ExtractRCRPlaneRaw
+//  Returns a 256 x canvasHeight pf8bit bitmap containing raw UV index values
+//  for the full sprite canvas.  odd=False -> A plane (V coords),
+//  odd=True -> B plane (U coords).
+// ---------------------------------------------------------------------------
+function TJamFile.ExtractRCRPlaneRaw(odd: boolean): TBitmap;
+var
+  i, x, y, X0, Y0, W, H: integer;
+  dstRow: PByte;
+  srcOfs: integer;
+begin
+  Result := TBitmap.Create;
+  Result.Width       := 256;
+  Result.Height      := canvasHeight;
+  Result.PixelFormat := pf8bit;
+  Result.Palette     := CreateGPxPal;
+
+  // Zero-fill (transparent = index 0)
+  for y := 0 to canvasHeight - 1 do
+    FillChar(Result.ScanLine[y]^, 256, 0);
+
+  // FRawData is canvasHeight rows of 512 bytes each (stride = 512).
+  // Within each row, pairs [X0 + x*2, X0 + x*2 + 1] hold (A, B) for pixel x.
+  // X0 = FInfo.X for even-Y entries (left half of raw row, 0-255).
+  // X0 = FInfo.X + 256 for odd-Y entries (right half of raw row, 256-511).
+  // Both halves display at the same column range (0..FInfo.Width-1).
+  for i := 0 to FEntries.Count - 1 do
+  begin
+    X0 := FEntries[i].FInfo.X;
+    if FEntries[i].FInfo.Y mod 2 <> 0 then
+      Inc(X0, 256);
+    Y0 := FEntries[i].FInfo.Y div 2;
+    W  := FEntries[i].FInfo.Width;
+    H  := FEntries[i].FInfo.Height;
+
+    for y := 0 to H - 1 do
+    begin
+      if Y0 + y >= canvasHeight then Break;
+      dstRow := Result.ScanLine[Y0 + y];
+      for x := 0 to W - 1 do
+      begin
+        srcOfs := (Y0 + y) * 512 + X0 + x * 2;
+        if odd then
+          dstRow[x] := FRawData[srcOfs + 1]   // B plane (U)
+        else
+          dstRow[x] := FRawData[srcOfs];       // A plane (V)
+      end;
+    end;
+  end;
+end;
+
+// ---------------------------------------------------------------------------
+//  LoadRCRMask
+//  Loads a companion mask JAM (e.g. rcr1b alongside rcr1a) and extracts its
+//  raw canvas as a pf8bit bitmap stored in rcrMask.
+//  Each pixel value is the segmentation index (0-11).
+// ---------------------------------------------------------------------------
+function TJamFile.LoadRCRMask(const MaskPath: string): boolean;
+var
+  MaskJam: TJamFile;
+  i, y, w, h: integer;
+  entryX, entryY, entryW, entryH, ex, ey, canvasX, canvasY: integer;
+  canvasData: TBytes;
+  pRow: PByte;
+  savedRcrJam: boolean;
+begin
+  Result := False;
+
+  if not FileExists(MaskPath) then
+    Exit;
+
+  // LoadFromFile calls CheckIfRCR which writes to the global boolRcrJam.
+  // The mask file (rcr?b) is not in rcrJAMList so it would set boolRcrJam=False,
+  // clobbering the True set by the parent RCR sprite load. Save and restore it.
+  savedRcrJam := boolRcrJam;
+
+  MaskJam := TJamFile.Create;
+  try
+    MaskJam.SetGpxPal(boolGP2Jam);   // match palette mode of parent
+    if not MaskJam.LoadFromFile(MaskPath, True) then
+    begin
+      boolRcrJam := savedRcrJam;
+      Exit;
+    end;
+
+    w := MaskJam.canvasWidth;
+    h := MaskJam.canvasHeight;
+
+    // Assemble the full-canvas mask from each entry's FRawTexture.
+    // FRawTexture is populated by DrawSingleTexture during LoadFromFile and
+    // contains the raw palette indices (0-11) for that entry in local (W x H)
+    // coordinates. This avoids assumptions about FRawData stride/layout and
+    // correctly handles entries at any (X, Y) canvas offset.
+    SetLength(canvasData, w * h);
+    FillChar(canvasData[0], w * h, 0);
+
+    for i := 0 to MaskJam.FEntries.Count - 1 do
+    begin
+      entryX := MaskJam.FEntries[i].FInfo.X;
+      entryY := MaskJam.FEntries[i].FInfo.Y;
+      entryW := MaskJam.FEntries[i].FInfo.Width;
+      entryH := MaskJam.FEntries[i].FInfo.Height;
+
+      if Length(MaskJam.FEntries[i].FRawTexture) < entryW * entryH then
+        Continue;
+
+      for ey := 0 to entryH - 1 do
+      begin
+        canvasY := entryY + ey;
+        if (canvasY < 0) or (canvasY >= h) then
+          Continue;
+        for ex := 0 to entryW - 1 do
+        begin
+          canvasX := entryX + ex;
+          if (canvasX < 0) or (canvasX >= w) then
+            Continue;
+          canvasData[canvasY * w + canvasX] :=
+            MaskJam.FEntries[i].FRawTexture[ey * entryW + ex];
+        end;
+      end;
+    end;
+
+    if Assigned(rcrMask) then
+      FreeAndNil(rcrMask);
+
+    rcrMask := TBitmap.Create;
+    rcrMask.PixelFormat := pf8bit;
+    rcrMask.Width       := w;
+    rcrMask.Height      := h;
+    rcrMask.Palette     := CreateGPxPal;
+
+    for y := 0 to h - 1 do
+    begin
+      pRow := rcrMask.ScanLine[y];
+      Move(canvasData[y * w], pRow^, w);
+    end;
+
+    Result := True;
+  finally
+    MaskJam.Free;
+    boolRcrJam := savedRcrJam;  // always restore, even on exception
   end;
 end;
 
